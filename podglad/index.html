@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silnik światła radiowego — próba</title>
+<style>
+  :root { --tlo: #0e0e12; --tekst: #e8e8ea; --przygaszony: #9a9aa2; --linia: #2a2a33; }
+  body { margin: 0; padding: 16px; background: var(--tlo); color: var(--tekst); font: 14px/1.45 -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .etykieta { display: inline-block; padding: 2px 8px; border: 1px solid var(--tekst); font-weight: 600; letter-spacing: .08em; font-size: 12px; }
+  .mapy { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+  figure { margin: 0; } figcaption { color: var(--przygaszony); font-size: 12px; margin-top: 4px; max-width: 320px; }
+  canvas { width: min(320px, 100%); image-rendering: pixelated; background: #000; display: block; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; } td, th { border-bottom: 1px solid var(--linia); padding: 4px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; } p { color: var(--przygaszony); max-width: 760px; }
+</style>
+</head>
+<body>
+<h1>Silnik światła radiowego — próba w przeglądarce <span class="etykieta">SYMULACJA</span></h1>
+<p>Zasłona terenu dla nadajników FM przy 100 MHz, kwadrat 8 × 8 km wokół rynku w Garwolinie (siatka 30 m). Jasne = fala dociera bez strat na krawędzi terenu, ciemne = cień (0–30 dB). Model: jedna krawędź dominująca (ITU-R P.526), ziemia 4/3, sam teren (NMT GUGiK 40 m, dalej Copernicus GLO-30). Nie pomiar.</p>
+<div id="status">liczę…</div>
+<div class="mapy" id="mapy"></div>
+<table id="czasy"><thead><tr><th>przebieg</th><th>wątki</th><th>czas całości</th><th>najdłuższy wątek</th></tr></thead><tbody></tbody></table>
+<script type="module">
+import { wczytajZestaw } from "../silnik/dane.js";
+import { dmaxMiasto } from "../silnik/silnik.js";
+
+const W = navigator.hardwareConcurrency || 4;
+const pula = (n) => Array.from({ length: n }, () => new Worker("./praca.js", { type: "module" }));
+let licznik = 0;
+const zlec = (w, z) => new Promise((ok) => {
+  const id = ++licznik;
+  const f = ({ data }) => { if (data.id === id) { w.removeEventListener("message", f); ok(data); } };
+  w.addEventListener("message", f); w.postMessage({ ...z, id });
+});
+
+async function przebieg(robotnicy, rodzaj, wierszy, kolumn, zadanie) {
+  const n = robotnicy.length, pas = Math.ceil(wierszy / n), t0 = performance.now();
+  const wyn = await Promise.all(robotnicy.map((w, k) => zlec(w, { rodzaj, ...zadanie, wiersze: [k * pas, Math.min((k + 1) * pas, wierszy)] })));
+  const L = new Float32Array(wierszy * kolumn); let o = 0;
+  for (const r of wyn) { L.set(r.L, o); o += r.L.length; }
+  return { L, ms: performance.now() - t0, maks: Math.max(...wyn.map((r) => r.ms)) };
+}
+
+function rysuj(L, N, tytul) {
+  const c = document.createElement("canvas"); c.width = c.height = N;
+  const g = c.getContext("2d"), im = g.createImageData(N, N);
+  for (let k = 0; k < N * N; k++) {                     // 100 MHz = czerwien (skala barw filmu: 88 MHz czerwien -> 3600 MHz fiolet)
+    const jas = 1 - Math.min(Math.max(L[k] / 30, 0), 1);
+    im.data[4 * k] = 255 * jas; im.data[4 * k + 1] = 70 * jas; im.data[4 * k + 2] = 50 * jas; im.data[4 * k + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  const f = document.createElement("figure"), cap = document.createElement("figcaption");
+  cap.textContent = tytul; f.append(c, cap); document.getElementById("mapy").append(f);
+}
+
+function wiersz(...komorki) {
+  const tr = document.createElement("tr");
+  for (const k of komorki) { const td = document.createElement("td"); td.textContent = k; tr.append(td); }
+  document.querySelector("#czasy tbody").append(tr);
+}
+const s = (ms) => (ms / 1000).toFixed(2) + " s";
+
+const { meta } = await wczytajZestaw("../weryfikacja/dane/dolek");
+const N = 267, wielu = pula(W), jeden = pula(1);
+await Promise.all([...wielu, ...jeden].map((w) => zlec(w, { rodzaj: "teren", T: meta.nadajniki[2].T, wiersze: [0, 1] })));  // rozgrzewka + dane
+for (const { nazwa, T } of meta.nadajniki) {
+  const r = await przebieg(wielu, "teren", N, N, { T });
+  rysuj(r.L, N, `${nazwa.replace("_", " ")} — zasłona terenu, ${s(r.ms)} na ${W} wątkach`);
+  wiersz(`teren: ${nazwa}`, W, s(r.ms), s(r.maks));
+  const r1 = await przebieg(jeden, "teren", N, N, { T });
+  wiersz(`teren: ${nazwa}`, 1, s(r1.ms), s(r1.maks));
+}
+// miasto (fala.py): tylko czasy, bez obrazu - siatka tej proby jest wysrodkowana poza rynkiem
+const { meta: mf } = await wczytajZestaw("../weryfikacja/dane/fala");
+const scena = { nx: mf.nx, ny: mf.ny, X0: mf.X0, Y1: mf.Y1, DX: mf.DX, DY: mf.DY };
+for (const [nazwa, { T, f }] of Object.entries(mf.nadajniki)) {
+  const Dmax = dmaxMiasto(scena, T);
+  for (const pulaR of [wielu, jeden]) {
+    const r = await przebieg(pulaR, "miasto", mf.ny, mf.nx, { T, f: f[0], Dmax });
+    wiersz(`miasto ${mf.ny}×${mf.nx} po 4,8 m: ${nazwa} ${f[0]} MHz`, pulaR.length, s(r.ms), s(r.maks));
+  }
+}
+document.getElementById("status").textContent = `gotowe — ${W} wątków, ${navigator.userAgent}`;
+window.__wynik = [...document.querySelectorAll("#czasy tbody tr")].map((tr) => tr.innerText);
+</script>
+</body>
+</html>

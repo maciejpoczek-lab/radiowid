@@ -1,0 +1,11 @@
+weryfikacja/dane/
+.DS_Store
+dane/
+_telefon/
+__pycache__/
+*.log
+*.bak
+*.bak-*
+.paczki-rano.lock/
+*.tmp
+przygotuj/ustawienia.lokalne.sh

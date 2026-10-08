@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon-180.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#07090d">
+<title>Światło radiowe</title>
+<style>
+  /* Układ: mapa wypełnia ekran; na szerokim ekranie panel sterowania z lewej, na telefonie arkusz wysuwany od dołu.
+     Jeden ciemny motyw z wyboru - światło fal rysujemy jak poświatę na nocnym planie miasta. */
+  :root {
+    color-scheme: dark;
+    --tlo: #07090d;            /* noc pod mapą */
+    --panel: #0f1218;          /* arkusz sterowania */
+    --panel-szklo: rgba(15, 18, 24, .86);
+    --pole: #171b24;           /* pola i przyciski */
+    --linia: #262c38;
+    --tekst: #e7e9ef;
+    --przygaszony: #8f97a6;
+    --akcent: #9fd0ff;         /* zmienia się z wybranym rodzajem sygnału (kolor jego światła na mapie) */
+    --czysta: #5fd38a; --czesciowo: #e8c25a; --zaslonieta: #8a8a94;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-liczby: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --r: 10px;
+  }
+  * { box-sizing: border-box; } [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--tlo); color: var(--tekst); font: 14px/1.45 var(--font); overflow: hidden; }
+  .app { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; height: 100dvh; }
+  .panel { background: var(--panel); border-right: 1px solid var(--linia); overflow-y: auto; overscroll-behavior: contain;
+           display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 24px; min-width: 0; }
+  .plotno { position: relative; min-width: 0; min-height: 0; }
+  #mapa { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--tlo); touch-action: none; cursor: crosshair; display: block; }
+
+  .naglowek { display: flex; flex-direction: column; gap: 6px; }
+  h1 { font-size: 20px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h1 small { display: block; font-size: 13px; font-weight: 500; color: var(--przygaszony); letter-spacing: 0; margin-top: 3px; }
+  h2 { font-size: 13px; margin: 6px 0 0; text-transform: uppercase; letter-spacing: .08em; color: var(--przygaszony); font-weight: 600; }
+  .etykieta { display: inline-block; padding: 2px 7px; border: 1px solid currentColor; border-radius: 4px; font: 600 11px/1.3 var(--font-liczby);
+              letter-spacing: .12em; color: var(--czesciowo); vertical-align: 3px; }
+  p, .maly { color: var(--przygaszony); margin: 0; } .maly { font-size: 12px; line-height: 1.5; }
+  .grupa { display: flex; flex-direction: column; gap: 8px; }
+  .podpis { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--przygaszony); font-weight: 600; }
+  .sterowanie { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  button, input[type=search] { font: inherit; color: var(--tekst); background: var(--pole); border: 1px solid var(--linia); border-radius: 8px; }
+  button { padding: 8px 12px; cursor: pointer; } button:hover { border-color: #3a4252; }
+  :focus-visible { outline: 2px solid var(--akcent); outline-offset: 2px; }
+  .szukaj { position: relative; display: flex; gap: 8px; }
+  #szukaj { flex: 1; min-width: 0; padding: 10px 12px; }
+  #podpowiedzi { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; display: flex; flex-direction: column;
+                 background: var(--panel); border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.5); overflow: hidden; }
+  #podpowiedzi button { border-radius: 0; border-width: 0 0 1px; text-align: left; }
+  #gps { white-space: nowrap; }
+  select { font: inherit; color: var(--tekst); background: var(--pole); border: 1px solid var(--linia); border-radius: 8px; padding: 10px 12px; width: 100%; }
+
+  /* rodzaj sygnału: przełącznik w formie żetonów; zaznaczony świeci kolorem swojej warstwy */
+  .zetony { display: flex; flex-wrap: wrap; gap: 6px; }
+  .zetony label { position: relative; padding: 7px 11px; border: 1px solid var(--linia); border-radius: 999px; background: var(--pole);
+                   font-size: 13px; cursor: pointer; user-select: none; }
+  .zetony input { position: absolute; opacity: 0; pointer-events: none; }
+  .zetony label:has(input:checked) { border-color: var(--akcent); color: var(--tlo); background: var(--akcent); font-weight: 600; }
+  .zetony label:has(input:focus-visible) { outline: 2px solid var(--akcent); outline-offset: 2px; }
+  label.pasmo { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--przygaszony); }
+  label.pasmo i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* antena odbiorcza */
+  .antena { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; }
+  #hrxTekst { font: 600 15px/1 var(--font-liczby); color: var(--tekst); font-variant-numeric: tabular-nums; }
+  #hrx { grid-column: 1 / -1; width: 100%; accent-color: var(--akcent); margin: 4px 0 0; }
+  .skala-h { grid-column: 1 / -1; position: relative; height: 16px; font: 10px/1 var(--font-liczby); color: var(--przygaszony); }
+  .skala-h span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .skala-h span::before { content: ""; position: absolute; left: 50%; top: -6px; width: 1px; height: 4px; background: var(--przygaszony); }
+  #wskazowka { border-left: 2px solid var(--akcent); padding: 6px 10px; background: var(--pole); border-radius: 0 6px 6px 0; color: var(--tekst); font-size: 12.5px; }
+  #wskazowka:empty, #dach:empty { display: none; }
+  #dach { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--tekst); font-size: 12.5px; }
+  button.akcja { border-color: var(--akcent); color: var(--akcent); background: transparent; font-weight: 600; padding: 7px 12px; }
+  button.akcja:hover { background: var(--akcent); color: var(--tlo); }
+
+  #status { color: var(--przygaszony); }
+  /* karta odpowiedzi: to, po co ktoś tu przychodzi - kierunek, ułożenie, kanały, wysokość */
+  .karta { background: var(--pole); border: 1px solid var(--linia); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .karta p { margin: 0; }
+  .kier { display: flex; gap: 14px; align-items: center; }
+  .kompas { width: 88px; height: 88px; flex: none; }
+  .kompas .tarcza { fill: var(--panel); stroke: var(--linia); stroke-width: 1.5; }
+  .kompas .kreska { stroke: var(--przygaszony); stroke-width: 1; }
+  .kompas .litera { fill: var(--tekst); font: 700 11px var(--font); text-anchor: middle; } .kompas .mala { fill: var(--przygaszony); font-size: 9px; }
+  .kompas .igla { stroke: var(--akcent); stroke-width: 3; stroke-linecap: round; } .kompas .grot { fill: var(--akcent); }
+  .kompas .srodek { fill: var(--tekst); }
+  .azymut { font: 600 30px/1.05 var(--font-liczby); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .azymut span { font: 600 15px var(--font); letter-spacing: 0; color: var(--akcent); }
+  .karta dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+  .karta dt { color: var(--przygaszony); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding-top: 2px; }
+  .karta dd { margin: 0; min-width: 0; } .karta dd.maly { color: var(--tekst); font-size: 13px; }
+  .namiar { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--linia); padding-top: 10px; }
+  .namiar ul { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .kanaly { font-size: 13px; line-height: 1.7; } .kanaly b { font-family: var(--font-liczby); }
+  .legenda { display: flex; flex-direction: column; gap: 6px; }
+  .pasek { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #111 0%, var(--akcent) 100%); }
+  .pasek-opis { display: flex; justify-content: space-between; font: 11px/1 var(--font-liczby); color: var(--przygaszony); }
+
+  details { border-top: 1px solid var(--linia); padding-top: 10px; }
+  summary { cursor: pointer; color: var(--przygaszony); font-size: 12px; }
+  details p { margin-top: 8px; }
+
+  .przewijana { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; width: 100%; }
+  td, th { border-bottom: 1px solid var(--linia); padding: 5px 6px; text-align: right; font-size: 12.5px; white-space: nowrap; }
+  td { font-family: var(--font-liczby); font-size: 12px; } td.l { font-family: var(--font); font-size: 12.5px; }
+  th { color: var(--przygaszony); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  td.l, th.l { text-align: left; }
+  .czysta { color: var(--czysta); } .czesciowo { color: var(--czesciowo); } .zaslonieta, .nie { color: var(--zaslonieta); }
+  .slychac { color: var(--czysta); } .granica { color: var(--czesciowo); }
+
+  /* na mapie: znak SYMULACJA i przyciski przybliżania */
+  .znak { position: absolute; left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); pointer-events: none;
+          padding: 5px 9px; border-radius: 6px; background: var(--panel-szklo); backdrop-filter: blur(6px); }
+  .zoom { position: absolute; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 6px; }
+  .zoom button { width: 42px; height: 42px; padding: 0; font-size: 20px; line-height: 1; background: var(--panel-szklo); backdrop-filter: blur(6px); }
+  .uchwyt { display: none; }
+  .zakladki { display: none; }
+
+  /* telefon: mapa na cały ekran, panel jako arkusz od dołu (zwijany) */
+  @media (max-width: 820px) {
+    .app { display: block; }
+    .plotno { position: fixed; inset: 0; }
+    .panel { position: fixed; z-index: 3; left: 0; right: 0; bottom: 0; max-height: 58dvh; border-right: 0; border-top: 1px solid var(--linia);
+             border-radius: 16px 16px 0 0; padding: 0 16px calc(20px + env(safe-area-inset-bottom, 0px)); gap: 12px;
+             box-shadow: 0 -12px 40px rgba(0,0,0,.55); transition: max-height .25s ease; }
+    .panel.zwiniety { max-height: 250px; overflow: hidden; }   /* uchwyt + karta + pasek zakładek */
+    .panel.zwiniety .naglowek { display: none; }       /* zwinięty: od razu karta z kierunkiem */
+    /* zakładki: widać tylko część panelu - bez przewijania przez wszystko naraz */
+    .panel { padding-bottom: 0; }
+    .panel[data-zakladka="wynik"] > [data-z]:not([data-z~="wynik"]),
+    .panel[data-zakladka="sygnal"] > [data-z]:not([data-z~="sygnal"]),
+    .panel[data-zakladka="miejsce"] > [data-z]:not([data-z~="miejsce"]),
+    .panel[data-zakladka="szczegoly"] > [data-z]:not([data-z~="szczegoly"]) { display: none; }
+    .zakladki { display: grid; grid-template-columns: repeat(4, 1fr); position: sticky; bottom: 0; z-index: 2; margin: auto -16px 0;
+                background: var(--panel); border-top: 1px solid var(--linia); padding: 4px 8px calc(6px + env(safe-area-inset-bottom, 0px)); }
+    .zakladki button { border: 0; background: none; color: var(--przygaszony); padding: 10px 4px; font-size: 13px; font-weight: 600; border-radius: 8px; }
+    .zakladki button[aria-selected="true"] { color: var(--akcent); background: var(--pole); }
+    .uchwyt { display: flex; justify-content: center; position: sticky; top: 0; z-index: 2; background: var(--panel);
+              padding: 12px 0 10px; margin: 0 -16px; border: 0; border-radius: 0; width: calc(100% + 32px); touch-action: none; cursor: grab; }
+    .uchwyt::before { content: ""; width: 40px; height: 4px; border-radius: 2px; background: #3a4252; }
+    .naglowek p.wstep { display: none; }
+    h1 { font-size: 17px; }
+    .przewijana { margin: 0 -16px; padding: 0 16px; }
+    .zoom { top: auto; bottom: calc(58dvh + 12px); transition: bottom .25s ease; }
+    .panel.zwiniety ~ .plotno .zoom { bottom: 262px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .panel, .zoom { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="panel" id="panel" data-zakladka="wynik">
+  <button class="uchwyt" id="uchwyt" aria-label="Zwiń lub rozwiń panel" aria-expanded="true"></button>
+  <div class="naglowek" data-z="wynik">
+    <h1>Światło radiowe <span class="etykieta">SYMULACJA</span><small>gdzie skierować antenę</small></h1>
+    <p class="maly wstep">Wpisz adres albo dotknij mapy w miejscu, w którym stoisz. Strzałki wskazują nadajniki, do których droga fali jest najczystsza — „najbliższy” nie znaczy „widoczny”. Położenie liczy się tylko na tym urządzeniu, nic nie jest wysyłane.</p>
+  </div>
+  <section id="karta" class="karta" aria-live="polite" data-z="wynik"><p>Wpisz adres albo dotknij mapy w miejscu, gdzie stanie antena.</p></section>
+  <div id="status" class="maly" data-z="wynik sygnal miejsce">wczytuję dane…</div>
+  <div class="szukaj" data-z="miejsce">
+    <input id="szukaj" type="search" placeholder="Twój adres, np. Kościuszki 12" autocomplete="off" aria-label="Adres">
+    <button id="gps">Moje położenie</button>
+    <div id="podpowiedzi"></div>
+  </div>
+  <div class="grupa" id="rodzaje" role="radiogroup" aria-label="Rodzaj sygnału" data-z="sygnal">
+    <span class="podpis">Antena na dachu</span><div class="zetony" id="rodzajeRtv"></div>
+    <span class="podpis">Antena do internetu i telefonu</span><div class="zetony" id="rodzajeKom"></div></div>
+  <div class="grupa" id="grupaProgram" data-z="sygnal"><label class="podpis" for="program">Program</label>
+    <select id="program"></select>
+    <span class="maly">Mapa i kierunek dla jednej stacji — „wszystkie” pokazuje w każdym miejscu najmocniejszą.</span></div>
+  <div class="grupa" id="grupaSieci" data-z="sygnal"><span class="podpis">Twoja sieć</span><div class="zetony" id="sieci" role="radiogroup" aria-label="Sieć komórkowa"></div>
+    <div class="sterowanie" id="pasma"></div>
+    <span class="podpis">Stacji na mapie</span><div class="zetony" id="ileStacji" role="radiogroup" aria-label="Ile stacji liczyć na mapie"></div>
+    <span class="maly">Światło z tylu stacji najbliższych punktu. Więcej stacji = pełniejsza mapa, ale dłuższe liczenie (w dużym mieście „wszystkie” to około minuty).</span></div>
+  <div class="grupa antena" data-z="miejsce">
+    <label class="podpis" for="hrx">Wysokość anteny</label><b id="hrxTekst">1,5 m</b>
+    <input id="hrx" type="range" min="1.5" max="40" step="0.5" value="1.5">
+    <div class="skala-h" aria-hidden="true"><span style="left:0;transform:none">1,5 m</span><span style="left:22.1%">10 m · dach</span><span style="right:0;left:auto;transform:none">40 m</span></div>
+  </div>
+  <div id="wskazowka" data-z="miejsce"></div>
+  <div id="dach" class="maly" data-z="miejsce"></div>
+  <div class="legenda" data-z="sygnal"><div class="pasek"></div><div class="pasek-opis"><span id="skalaOd">słabo</span><span id="skalaDo">mocno</span></div>
+    <div id="legenda" class="maly"></div></div>
+
+  <section id="sekcjaStacje" class="grupa" data-z="szczegoly">
+  <h2>Stacje komórkowe — kierunek anteny</h2>
+  <p class="maly">Kolejność: od najczystszej drogi. Nadwyżka = ile decybeli fala traci ponad wolną przestrzeń (zasłony). Czysta &lt; 3 dB, częściowo &lt; 15 dB. Wysokość anteny bez gwiazdki to szczyt masztu albo dachu odczytany z lotniczego modelu pokrycia terenu (NMPT) w miejscu stacji — górna granica, bo antena wisi zwykle trochę niżej; z gwiazdką — założona (rejestr UKE jej nie podaje, a poza miastem modelu pokrycia brak).</p>
+  <div class="przewijana"><table id="stacje"><thead><tr><th>#</th><th>kierunek</th><th>km</th><th class="l">ocena</th><th>nadwyżka dB</th><th>antena m</th><th class="l">operator</th><th class="l">pasma</th><th class="l">adres</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section id="sekcjaFm" class="grupa" data-z="szczegoly">
+  <h2>Radio i telewizja — co odbierzesz</h2>
+  <div class="przewijana"><table id="fm"><thead><tr><th class="l">rodzaj</th><th class="l">program / multipleks</th><th>MHz</th><th>dBµV/m</th><th class="l">ocena</th><th>kierunek</th><th>km</th><th class="l">nadajnik</th><th class="l">strata przy antenie (wobec 10 m)</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <details data-z="szczegoly">
+    <summary>Jak to liczymy</summary>
+    <p class="maly">Kolorowe światło to zasięg nadajników wybranego rodzaju na całej mapie (co 16 m, a wokół punktu dokładniej, co 4 m), na wysokości anteny z suwaka. Stacje komórkowe: jedna krawędź dominująca (ITU-R P.526), korony drzew, ziemia 4/3, bez odbić od ścian.</p>
+    <p class="maly">Radio i telewizja: natężenie pola wg ITU-R P.1546-6 (krzywe zasięgu do planowania nadajników: ląd, 50% czasu i miejsc) z mocy nadajnika (ERP), wysokości masztu nad okolicznym terenem i charakterystyki jego anteny; przy antenie poniżej 10 m poprawka z P.1546, w zabudowie z prawdziwych budynków i drzew między Tobą a nadajnikiem. Progi w dBµV/m: FM słychać ≥ 60, granica ≥ 48; DAB+ dobry ≥ 50, granica ≥ 38; DVB-T odbiór ≥ 56 (antena dachowa), granica ≥ 48 — przybliżenia, nie normy. Progi dotyczą anteny na 10 m; telefon w ręku (1,5 m) jest od nich zwykle 12–17 dB słabszy. Nadajniki: wykaz pozwoleń UKE, stan 2026-09-18, bez emisji czasowych i eksperymentalnych. To nie pomiar.</p>
+    <p class="maly">Przybliżanie: dwa palce, kółko myszy albo +/−; przesuwanie: przeciągnij. Krótkie dotknięcie ustawia punkt.</p>
+    <p class="maly" id="zrodla"></p>
+  </details>
+  <nav class="zakladki" id="zakladki" role="tablist" aria-label="Części panelu">
+    <button role="tab" data-do="wynik" aria-selected="true">Kierunek</button>
+    <button role="tab" data-do="sygnal" aria-selected="false">Sygnał</button>
+    <button role="tab" data-do="miejsce" aria-selected="false">Miejsce</button>
+    <button role="tab" data-do="szczegoly" aria-selected="false">Tabele</button>
+  </nav>
+</aside>
+<div class="plotno"><canvas id="mapa"></canvas>
+  <div class="znak"><span class="etykieta">SYMULACJA</span></div>
+  <div class="zoom"><button id="zplus" aria-label="Przybliż">+</button><button id="zminus" aria-label="Oddal">−</button><button id="zcaly" aria-label="Cały obszar" style="font-size:15px">⤢</button></div></div>
+</div>
+<script type="module">
+import { wczytajZestaw } from "../silnik/dane.js";
+import { nalozPaczki, na2180 } from "../silnik/paczka.js";
+import { PASMA_MHZ, PROGI_RTV, ocena } from "../silnik/punkt.js";
+import { poprawkaOdbiornika } from "../silnik/p1546.js";
+
+const MIEJSCA = { garwolin: "", warszawa: "-warszawa" };  // środek mapy zawsze w punkcie publicznym (rynek, plac Defilad)
+const MIEJSCE = new URLSearchParams(location.search).get("miejsce") in MIEJSCA ? new URLSearchParams(location.search).get("miejsce") : "garwolin";
+const PACZKI = new URLSearchParams(location.search).has("paczki");   // PROBA: układ 2180 + warstwy miasta z paczek 20 km (dane/paczki/v1)
+const PRZ = MIEJSCA[MIEJSCE] + (PACZKI ? "-2180" : "");   // przyrostek plików danych miejsca (Garwolin: bez przyrostka; układ 2180: -2180)
+const ZESTAW = new URLSearchParams(location.search).get("zestaw") || `obszar-2880${PRZ}-z`;
+const ZASIEG_MAPY = 3000;                  // m za krawędzią mapy: dalsze stacje komórkowe pomijane w świetle całej mapy
+// cała mapa, komórkowe: stacja liczona tylko w kwadracie o pół boku promienX × odległość do trzeciej najbliższej stacji
+// (min. PROMIEN_MIN) - dalej wygrywają bliższe. Zmierzone 2026-10-07 (wartości strat, 129 600 komórek): Warszawa 4G 3× vs 6×
+// jasność różni się o > 10% w 0,03% komórek; Garwolin wszystkie komórkowe 3× vs bez przycięcia - 0,07%.
+// Gęste miasto: 2× (pomiar w Node, 4G, 10 m, wzorzec 6×): Warszawa 1336 stacji - cała mapa 51 -> 21 s, jasność > 10%
+// w 0,10% komórek (3×: 0,07%); Garwolin 29 stacji - 13 -> 11 s, ale 0,66% (3×: 0,11%) - stąd 2× dopiero od GESTO stacji rodzaju.
+const PROMIEN_ARG = +new URLSearchParams(location.search).get("promien"), PROMIEN_MIN = 800, GESTO = 100;   // ?promien= do sprawdzania zbieżności
+const promienX = (ile) => PROMIEN_ARG || (ile > GESTO ? 2 : 3);
+// komórkowe: światło z ileStacji stacji najbliższych punktu (Warszawa: 683 stacje na całej mapie = 52 s na telefonie);
+// wybór na stronie (żetony „Stacji na mapie”): 3 / 6 / 12 / 24 / wszystkie; „wszystkie” = stacje do 3 km za krawędzią, przycięte promieniem.
+// ?stacje=N albo ?wszystkie ustawia wybór na starcie.
+const ILE_STACJI = [3, 6, 12, 24, Infinity], ARG_STACJE = new URLSearchParams(location.search);
+let ileStacji = ARG_STACJE.has("wszystkie") ? Infinity : ILE_STACJI.includes(+ARG_STACJE.get("stacje")) ? +ARG_STACJE.get("stacje") : 3;
+const ILE_SWIATEL = 6, ILE_RTV = 3, OKNO = 300, L_JASNO = 85, L_CIEMNO = 135;          // światło: L 85 dB = pełny blask, 135 dB = ciemność
+const GRUPY = [                                                           // pasma w grupy kolorów (środek grupy -> barwa)
+  { nazwa: "daleki zasięg, przez ściany", mhz: "700–900", f: 806, gdy: (f) => f < 1000 },
+  { nazwa: "podstawowe 4G", mhz: "1800", f: 1842, gdy: (f) => f >= 1000 && f < 2000 },
+  { nazwa: "szybsze, bliżej stacji", mhz: "2100–2600", f: 2140, gdy: (f) => f >= 2000 && f < 3000 },
+  { nazwa: "5G, najszybsze, krótki zasięg", mhz: "3600", f: 3600, gdy: (f) => f >= 3000 },
+];
+const RODZAJE = [                                                         // czego szuka oglądający: filtr pasm rejestru UKE
+  { id: "dvbt", nazwa: "Telewizja naziemna", rtv: true },             // pierwsza: antena na dachu to najczęściej telewizja
+  { id: "fm", nazwa: "Radio FM", rtv: true },
+  { id: "dab", nazwa: "Radio cyfrowe DAB+", rtv: true },
+  { id: "lte", nazwa: "Internet 4G", p: (b) => /^lte(?!4[25]0)/.test(b) },     // LTE 420/450 to sieci służb i energetyki, nie dla telefonu
+  { id: "5g", nazwa: "Internet 5G", p: (b) => b.startsWith("5g") },
+  { id: "umts", nazwa: "3G", p: (b) => b.startsWith("umts") },
+  { id: "gsm", nazwa: "Rozmowy 2G", p: (b) => /^gsm\d/.test(b) },
+  { id: "wszystko", nazwa: "Wszystkie komórkowe", p: () => true },
+];
+const RTV = {                                    // barwa światła radia/TV
+  fm: { nazwa: "FM", kol: [255, 170, 40] },
+  dab: { nazwa: "DAB+", kol: [60, 225, 205] },
+  dvbt: { nazwa: "DVB-T", kol: [235, 90, 235] },
+};
+const KROK_MAPY = 4;                              // cała mapa: co 4. komórka (16 m)
+const KOMPAS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+const $ = (id) => document.getElementById(id);
+
+const W = Math.min(navigator.hardwareConcurrency || 4, ILE_SWIATEL);
+const pula = Array.from({ length: W }, () => new Worker("./punkt-praca.js", { type: "module" }));
+let licznik = 0;
+const zlec = (w, z) => new Promise((ok) => {
+  const id = ++licznik;
+  const f = ({ data }) => { if (data.id === id) { w.removeEventListener("message", f); ok(data); } };
+  w.addEventListener("message", f); w.postMessage({ ...z, zestaw: ZESTAW, prz: PRZ, paczki: PACZKI, id });
+});
+// kolejka zadań: wątek dostaje następne zadanie dopiero po skończeniu poprzedniego, więc zadania przebiegu, który
+// stracił ważność (nowy punkt, rodzaj, wysokość), odpadają przed wysłaniem (wynik null) zamiast blokować nowe
+const wolne = [...pula], kolejka = [];
+const zlecaj = (z, { pilne = false, zywe = () => true } = {}) => new Promise((ok) => {
+  const zad = { z, ok, zywe };
+  if (pilne) kolejka.unshift(zad); else kolejka.push(zad);
+  rusz();
+});
+function rusz() {
+  while (wolne.length && kolejka.length) {
+    const zad = kolejka.shift();
+    if (!zad.zywe()) { zad.ok(null); continue; }
+    const w = wolne.pop();
+    zlec(w, zad.z).then((r) => { wolne.push(w); zad.ok(r); rusz(); });
+  }
+}
+
+function barwa(f) {                      // tu skala rozciągnięta na pasma komórkowe: 700 MHz czerwień -> 3600 MHz fiolet (logarytmicznie)
+  const x = Math.min(Math.max(Math.log(f / 700) / Math.log(3600 / 700), 0), 1);   // (w filmie 88-3600 - wszystkie pasma wychodziły niebieskie)
+  const h = x * 280, c = (k) => { const a = (k + h / 30) % 12; return 0.5 - 0.5 * Math.max(-1, Math.min(a - 3, 9 - a, 1)); };
+  return [255 * c(0), 255 * c(8), 255 * c(4)];
+}
+
+const gz = (u) => fetch(u).then((r) => new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).json());
+const [{ meta, t }, wektory, mw] = await Promise.all([wczytajZestaw(`../dane/${ZESTAW}`), gz(`../dane/budynki-wektor${PRZ}.json.gz`), gz(`../dane/mapa-wektor${PRZ}.json.gz`)]);
+const PACZKI_STAN = PACZKI ? await nalozPaczki(meta, t, "../dane/paczki/v1") : null;
+const T_DANE = performance.now() / 1000;   // od wejścia na stronę do danych w pamięci (diagnostyka czasu w linii stanu)
+let pierwszy = true;
+const m = meta.miasto, NX = m.nx, NY = m.ny, tr = meta.teren;
+// obrysy budynków (LoD1) jako jedna ścieżka w metrach od rynku - ostre przy każdym przybliżeniu
+const budynki = new Path2D();
+for (const b of wektory.budynki) {
+  budynki.moveTo(b[0] * wektory.skala, b[1] * wektory.skala);
+  for (let k = 2; k < b.length; k += 2) budynki.lineTo(b[k] * wektory.skala, b[k + 1] * wektory.skala);
+  budynki.closePath();
+}
+// podkład orientacyjny (PRG + BDOT10k): ścieżki w metrach od rynku
+const sciezka = (l, zamknij) => { const p = new Path2D(); p.moveTo(l[0] * mw.skala, l[1] * mw.skala);
+  for (let k = 2; k < l.length; k += 2) p.lineTo(l[k] * mw.skala, l[k + 1] * mw.skala); if (zamknij) p.closePath(); return p; };
+const laczone = (lista, zamknij) => { const p = new Path2D(); for (const l of lista) p.addPath(sciezka(l, zamknij)); return p; };
+const WODY = laczone(mw.wody, true), RZEKI = laczone(mw.rzeki.map((r) => r[1])), TORY = laczone(mw.tory);
+const JEZDNIE = [0, 1, 2, 3].map((k) => laczone(mw.jezdnie.filter((j) => j[0] === k).map((j) => j[1])));
+const SZER_JEZDNI = [4, 6, 8, 11];                                         // m, wg klasy drogi
+const NAPISY = mw.ulice.map(([nazwa, l]) => {                              // podpis na najdłuższym odcinku linii ulicy
+  let best = null;
+  for (let k = 0; k + 3 < l.length; k += 2) { const dx = (l[k + 2] - l[k]) * mw.skala, dy = (l[k + 3] - l[k + 1]) * mw.skala, d = Math.hypot(dx, dy);
+    if (!best || d > best.d) best = { d, x: (l[k] + l[k + 2]) / 2 * mw.skala, y: (l[k + 1] + l[k + 3]) / 2 * mw.skala, kat: Math.atan2(-dy, dx) }; }
+  return best && { nazwa: nazwa.replace(/^(Aleja |Plac )/, (m) => m), ...best };
+}).filter(Boolean).sort((a, b) => b.d - a.d);
+const bezOgonkow = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l");
+const ADRESY = mw.adresy.map(([u, nr, x, y]) => ({ ulica: mw.ulice_nazwy[u][0], msc: mw.ulice_nazwy[u][1], nr, x: x * mw.skala, y: y * mw.skala,
+  klucz: bezOgonkow(`${mw.ulice_nazwy[u][0]} ${nr} ${mw.ulice_nazwy[u][1]}`) }));
+$("zrodla").textContent = "Źródła: " + meta.zrodla.join(" · ") + " · " + mw.zrodlo.join(" · ") + " · Nadajniki FM, DAB+, DVB-T: UKE, wykaz pozwoleń radiowych, stan 2026-09-18, przetworzone.";
+
+// podkład: cieniowanie wysokości pokrycia (O) - światło z północnego zachodu, budynki jaśniej
+// grunt wygładzony (okno 9 × 9 komórek = 36 m): NMT ma centymetrowe uskoki między pasami nalotu, które cieniowanie
+// na płaskim terenie zamienia w ukośne pasy; budynki i korony (O - G) zostają ostre
+const Gs = (() => {
+  const a = Float32Array.from(t.G), b = new Float32Array(NX * NY), R = 4;
+  for (const [n1, n2, s1, s2] of [[NY, NX, NX, 1], [NX, NY, 1, NX]]) {       // dwa przebiegi: wiersze, potem kolumny
+    for (let u = 0; u < n1; u++) {
+      let suma = 0, ile = 0;
+      for (let v = 0; v <= R && v < n2; v++) { suma += a[u * s1 + v * s2]; ile++; }
+      for (let v = 0; v < n2; v++) {
+        b[u * s1 + v * s2] = suma / ile;
+        if (v + R + 1 < n2) { suma += a[u * s1 + (v + R + 1) * s2]; ile++; }
+        if (v - R >= 0) { suma -= a[u * s1 + (v - R) * s2]; ile--; }
+      }
+    }
+    a.set(b);
+  }
+  return a;
+})();
+const pod = new Float32Array(NX * NY);
+for (let i = 0; i < NY; i++) for (let j = 0; j < NX; j++) {
+  const k = i * NX + j, o = (di, dj) => { const q = Math.min(Math.max(i + di, 0), NY - 1) * NX + Math.min(Math.max(j + dj, 0), NX - 1); return Gs[q] + t.O[q] - t.G[q]; };
+  const gx = (o(0, 1) - o(0, -1)) / (2 * m.DX), gy = (o(1, 0) - o(-1, 0)) / (2 * m.DY);   // gy: w dół = na południe
+  const cien = Math.min(Math.max(0.55 + 0.5 * (-gx + gy) / Math.hypot(1, gx, gy), 0), 1);
+  pod[k] = 0.18 + 0.32 * cien + (t.BUD[k] ? 0.12 : 0);
+}
+const mapa = $("mapa"), zrodlo = document.createElement("canvas"); zrodlo.width = NX; zrodlo.height = NY;
+// widok: s = piksele ekranu (urządzenia) na komórkę, (ox, oy) = komórka w lewym górnym rogu
+const widok = { s: 1, ox: 0, oy: 0 };
+const dopasuj = () => { const r = mapa.getBoundingClientRect(), d = devicePixelRatio || 1;
+  mapa.width = Math.round(r.width * d); mapa.height = Math.round(r.height * d); return Math.min(mapa.width / NX, mapa.height / NY); };
+let sMin = dopasuj();
+const zaslon = () => (matchMedia("(max-width: 820px)").matches ? $("panel").getBoundingClientRect().height * (devicePixelRatio || 1) : 0);   // telefon: arkusz zasłania dół mapy
+const caly = () => { widok.s = Math.max(mapa.width / NX, mapa.height / NY); widok.ox = (NX - mapa.width / widok.s) / 2; widok.oy = (NY - (mapa.height - zaslon()) / widok.s) / 2; ogranicz(); };
+function ogranicz() {
+  widok.s = Math.min(Math.max(widok.s, sMin), sMin * 24);
+  const w = mapa.width / widok.s, h = mapa.height / widok.s;
+  const tniej = (o, rozm, n) => (rozm >= n ? (n - rozm) / 2 : Math.min(Math.max(o, 0), n - rozm));   // mapa węższa niż ekran - na środek
+  widok.ox = tniej(widok.ox, w, NX); widok.oy = tniej(widok.oy, h, NY);
+}
+function zoom(k, ex = mapa.width / 2, ey = mapa.height / 2) {     // (ex, ey) w pikselach urządzenia - ten punkt zostaje w miejscu
+  const cx = widok.ox + ex / widok.s, cy = widok.oy + ey / widok.s;
+  widok.s *= k; ogranicz(); widok.ox = cx - ex / widok.s; widok.oy = cy - ey / widok.s; ogranicz(); pokaz();
+}
+
+// --- rodzaj sygnału: zawęża stacje, strzałki i światło do wybranej technologii
+let rodzaj = RODZAJE[0];
+RODZAJE.forEach((rd) => {
+  const l = document.createElement("label"); l.className = "pasmo";
+  const c = document.createElement("input"); c.type = "radio"; c.name = "rodzaj"; c.checked = rd === rodzaj;
+  c.onchange = () => {
+    rodzaj = rd; program = null;
+    if (rd.id === "dvbt" && hRx < 10) ustawH(10);       // telewizję odbiera się anteną na dachu; suwak da się potem zsunąć
+    pokazSekcje(); gruba = null; if (P) ustaw(P.x, P.y);
+  };
+  l.append(c, rd.nazwa); $(rd.rtv ? "rodzajeRtv" : "rodzajeKom").append(l);
+});
+const SIECI = [{ nazwa: "dowolna" }, { nazwa: "Orange", re: /^Orange/ }, { nazwa: "Play", re: /^P4\b/ }, { nazwa: "T-Mobile", re: /^T-Mobile/ }, { nazwa: "Plus", re: /^Polkomtel/ }];
+const marka = (o) => SIECI.find((n) => n.re?.test(o))?.nazwa ?? o.split(" ")[0];
+let siec = SIECI[0];
+SIECI.forEach((n) => {
+  const l = document.createElement("label");
+  const c = document.createElement("input"); c.type = "radio"; c.name = "siec"; c.checked = n === siec;
+  c.onchange = () => { siec = n; gruba = null; if (P) ustaw(P.x, P.y); };
+  l.append(c, n.nazwa); $("sieci").append(l);
+});
+ILE_STACJI.forEach((n) => {
+  const l = document.createElement("label");
+  const c = document.createElement("input"); c.type = "radio"; c.name = "ileStacji"; c.checked = n === ileStacji;
+  c.onchange = () => { ileStacji = n; gruba = null; pokazSekcje(); if (P) ustaw(P.x, P.y); };
+  l.append(c, isFinite(n) ? String(n) : "wszystkie"); $("ileStacji").append(l);
+});
+const TROJKATY = " Trójkąty na mapie = nadajniki, z których liczy się światło; kolor = droga fali do punktu (zielony czysta, żółty częściowo, szary zasłonięta).";
+function pokazSekcje() {
+  const rtv = !!rodzaj.rtv;
+  document.documentElement.style.setProperty("--akcent", rtv ? `rgb(${RTV[rodzaj.id].kol.join(",")})` : "#9fd0ff");
+  $("skalaOd").textContent = rtv ? `${PROGI_RTV[rodzaj.id].granica - 4} dBµV/m` : `strata ${L_CIEMNO} dB`;
+  $("skalaDo").textContent = rtv ? `${PROGI_RTV[rodzaj.id].slychac + 4} dBµV/m` : `${L_JASNO} dB`;
+  wskazowka();
+  $("sekcjaStacje").hidden = $("pasma").hidden = $("grupaSieci").hidden = rtv; $("grupaProgram").hidden = !rtv; $("sekcjaFm").hidden = !rtv && rodzaj.id !== "wszystko";
+  $("legenda").textContent = rtv ? `Jasność = natężenie pola ${RTV[rodzaj.id].nazwa} z kilku najmocniejszych nadajników w tym punkcie.` + TROJKATY
+                                 : `Jasność = całkowita strata drogi fali: od 135 dB (ciemno) do 85 dB (pełny blask), najlepsza z ${isFinite(ileStacji) ? ileStacji + " stacji najbliższych punktu" : "wszystkich stacji"} wybranego rodzaju.` + TROJKATY;
+}
+function lista() {                        // stacje z pasmami wybranego rodzaju, ułożone od najczystszej drogi w tych pasmach
+  if (!wynik || rodzaj.rtv) return [];
+  const st = siec.re ? wynik.stacje.filter((s) => s.operatorzy.some((o) => siec.re.test(o))) : wynik.stacje;
+  if (rodzaj.id === "wszystko") return st;
+  return st.map((s) => {
+    const pasma = s.pasma.filter(rodzaj.p), nad = pasma.map((b) => s.pasma_wynik[b]?.nadwyzka_db).filter((v) => v != null);
+    if (!nad.length) return null;
+    const lo = Math.min(...nad), hi = Math.max(...nad);
+    return { ...s, pasma, nadwyzka_min_db: lo, nadwyzka_max_db: hi, ocena: ocena(lo) };
+  }).filter(Boolean).sort((a, b) => a.nadwyzka_min_db - b.nadwyzka_min_db);
+}
+let program = null;                        // radio/TV: jeden program (multipleks) zamiast najmocniejszego w każdym miejscu
+const rtvWszystkie = () => (wynik?.fm || []).filter((p) => rodzaj.id === "wszystko" || p.typ === rodzaj.id);
+const rtvLista = () => rtvWszystkie().filter((p) => !program || p.program === program);
+const NAZWY_PR = { "Program 1": "Jedynka (Polskie Radio)", "Program 2": "Dwójka (Polskie Radio)", "Program 3": "Trójka (Polskie Radio)",
+                   "Program 4 - Polskie Radio 24": "Polskie Radio 24", "Radio Regionalne": "Radio regionalne (Polskie Radio)" };
+const nazwaPr = (p) => NAZWY_PR[p] ?? p;
+function wypelnijProgramy() {              // programy tego rodzaju od najmocniejszego w punkcie; słabe na końcu listy
+  const sel = $("program"), naj = new Map();
+  for (const p of rtvWszystkie()) if (!naj.has(p.program) || p.E_dBuVm > naj.get(p.program).E_dBuVm) naj.set(p.program, p);
+  const ps = [...naj.values()].sort((a, b) => b.E_dBuVm - a.E_dBuVm);
+  if (program && !naj.has(program)) program = null;
+  sel.replaceChildren(new Option(`wszystkie (${ps.filter((p) => p.ocena !== "nie").length} odbieralnych)`, ""),
+    ...ps.map((p) => new Option(`${nazwaPr(p.program)} — ${OCENA[p.ocena]}`, p.program)));
+  sel.value = program ?? "";
+}
+$("program").onchange = (e) => { program = e.target.value || null; gruba = null; if (P) ustaw(P.x, P.y); };
+const fmSlyszalne = () => rtvLista().filter((p) => p.ocena !== "nie");
+
+// --- pasma: przełączniki
+const wl = GRUPY.map(() => true);
+GRUPY.forEach((g, gi) => {
+  const l = document.createElement("label"); l.className = "pasmo";
+  const c = document.createElement("input"); c.type = "checkbox"; c.checked = true;
+  c.onchange = () => { wl[gi] = c.checked; rysujMape(); };
+  const i = document.createElement("i"); i.style.background = `rgb(${barwa(g.f).join(",")})`;
+  l.append(c, i, `${g.nazwa}`); l.title = `${g.mhz} MHz`; $("pasma").append(l);
+});
+
+let hRx = 1.5;
+const hTekst = (h) => `${String(h).replace(".", ",")} m`;
+const ustawH = (h) => { $("hrx").value = h; hRx = +$("hrx").value; $("hrxTekst").textContent = hTekst(hRx) + " nad gruntem"; opiszDach(); wskazowka(); };
+$("hrx").oninput = () => ustawH(+$("hrx").value);
+function wskazowka() {                    // radio/TV z anteną niżej niż 10 m: ile sygnału ginie względem wysokości, dla której są progi
+  const w = $("wskazowka");
+  if (!rodzaj.rtv || hRx >= 10) { w.textContent = rodzaj.id === "dvbt" ? "Telewizję odbiera się anteną na dachu — suwak ustawiony na 10 m. Zsuń go niżej, żeby zobaczyć, co złapie antena na niskim domu albo na balkonie." : ""; return; }
+  const f = { fm: 98, dab: 220, dvbt: 600 }[rodzaj.id], strata = -poprawkaOdbiornika(hRx, f);
+  w.textContent = `Antena na ${hTekst(hRx)} łapie ok. ${strata.toFixed(0)} dB mniej niż na 10 m (w otwartym terenie; za budynkami więcej). ` +
+    (rodzaj.id === "dvbt" ? "Dlatego telewizor na niskim domu często pokazuje „brak sygnału”, choć sąsiad z anteną na dachu ogląda bez kłopotu — tam, gdzie mapa ciemnieje, podnieś antenę albo użyj anteny kierunkowej z większym zyskiem."
+                         : "Progi odbioru dotyczą anteny na 10 m.");
+}
+$("hrx").onchange = () => { gruba = null; if (P) ustaw(P.x, P.y); };                  // liczy po puszczeniu suwaka
+function dachPunktu() {                   // wysokość dachu w punkcie albo najbliższego budynku do ok. 12 m (punkt adresowy bywa obok domu)
+  const j0 = Math.floor((P.x - m.X0) / m.DX), i0 = Math.floor((m.Y1 - P.y) / m.DY);
+  let best = null;
+  for (let di = -3; di <= 3; di++) for (let dj = -3; dj <= 3; dj++) {
+    const i = i0 + di, j = j0 + dj; if (i < 0 || j < 0 || i >= NY || j >= NX) continue;
+    const k = i * NX + j, h = t.O[k] - t.G[k], d = di * di + dj * dj;
+    if (t.BUD[k] && h > 1 && (!best || d < best.d)) best = { d, h };
+  }
+  return best && { h: best.h, obok: best.d > 0 };
+}
+function opiszDach() {                    // antena niżej niż dach = w środku budynku; przycisk ustawia suwak na dach + 2 m (maszt)
+  const el = $("dach"); el.replaceChildren();
+  if (!P) return;
+  const d = dachPunktu(); if (!d) return;
+  const naDachu = Math.min(Math.ceil(d.h + 2), 40), tekst = document.createElement("span");
+  tekst.textContent = hRx < d.h ? `${d.obok ? "Obok punktu stoi budynek" : "Tu stoi budynek"} — dach ok. ${d.h.toFixed(0)} m nad gruntem; antena na ${hTekst(hRx)} byłaby w środku. `
+                                : `Antena ${(hRx - d.h).toFixed(1).replace(".", ",")} m nad dachem${d.obok ? " budynku obok" : ""}. `;
+  el.append(tekst);
+  if (Math.abs(hRx - naDachu) >= 0.5) {
+    const b = document.createElement("button"); b.className = "akcja"; b.textContent = `Ustaw antenę na dachu: ${naDachu} m`;
+    b.title = "dach + 2 m krótkiego masztu";
+    b.onclick = () => { ustawH(naDachu); gruba = null; ustaw(P.x, P.y); };
+    el.append(b);
+  }
+}
+// warstwy światła: {okno {i0, j0, n, k}, A: [jasność 0..1 dla każdej barwy | null], kol: [[r, g, b]]}; drobna (wokół punktu) przykrywa grubą
+let P = null, wynik = null, gruba = null, drobna = null, okno = null, nrPrzebiegu = 0;
+let naMapie = [];                         // nadajniki, z których liczy się światło: {x, y, ocena} - znaczniki na mapie
+const pamiecGrubej = new Map();                 // cała mapa nie zależy od punktu (komórki) - liczymy raz na rodzaj i wysokość
+
+function rozmyj(A, n) {                  // filtr [1 2 1]/4 dwa razy w obu kierunkach: schodki z próbek co 16 m -> miękkie przejścia
+  const B = new Float32Array(A.length);
+  for (let p = 0; p < 2; p++) {
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const k = i * n + j; B[k] = (A[k - (j > 0)] + 2 * A[k] + A[k + (j < n - 1)]) / 4; }
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const k = i * n + j; A[k] = (B[k - (i > 0) * n] + 2 * B[k] + B[k + (i < n - 1) * n]) / 4; }
+  }
+}
+// Składanie obrazu liczy się kawałkami po kilka milisekund: w całości trwa na telefonie do sekundy, a w tym czasie
+// mapa nie reagowałaby na palec. Nowe wywołanie przerywa poprzednie (liczy się tylko ostatni stan warstw).
+let numerRysunku = 0;
+async function rysujMape() {
+  const nr = ++numerRysunku;
+  const G = gruba, D = drobna;                     // stan z chwili wywołania - w przerwach może się zmienić
+  const g = zrodlo.getContext("2d"), im = g.createImageData(NX, NY), d = im.data, jest = G || D;
+  const wl2 = (w, b) => !w.mobilne || wl[b];
+  const dodaj = (w, k, i, j) => {                // jasność warstwy w komórce (i, j) - dwuliniowo między próbkami
+    const { i0, j0, n, k: kk = 1 } = w.okno, u = Math.min(Math.max((i - i0 - (kk >> 1)) / kk, 0), n - 1), v = Math.min(Math.max((j - j0 - (kk >> 1)) / kk, 0), n - 1);
+    const a0 = Math.floor(u), b0 = Math.floor(v), a1 = Math.min(a0 + 1, n - 1), b1 = Math.min(b0 + 1, n - 1), fu = u - a0, fv = v - b0;
+    w.A.forEach((A, b) => {
+      if (!A || !wl2(w, b)) return;
+      const s = (A[a0 * n + b0] * (1 - fv) + A[a0 * n + b1] * fv) * (1 - fu) + (A[a1 * n + b0] * (1 - fv) + A[a1 * n + b1] * fv) * fu;
+      const al = 0.3 * s * s;
+      d[4 * k] += w.kol[b][0] * al; d[4 * k + 1] += w.kol[b][1] * al; d[4 * k + 2] += w.kol[b][2] * al;
+    });
+  };
+  const wDrobnej = (i, j) => D && i >= D.okno.i0 && i < D.okno.i0 + D.okno.n && j >= D.okno.j0 && j < D.okno.j0 + D.okno.n;
+  let t = performance.now();
+  for (let i = 0; i < NY; i++) {
+    for (let j = 0; j < NX; j++) {
+      const k = i * NX + j, v = 255 * pod[k] * (jest ? 0.6 : 1);
+      d[4 * k] = d[4 * k + 1] = d[4 * k + 2] = v; d[4 * k + 3] = 255;
+      if (!jest) continue;
+      if (wDrobnej(i, j)) dodaj(D, k, i, j); else if (G) dodaj(G, k, i, j); else continue;
+      d[4 * k] = Math.min(d[4 * k], 255); d[4 * k + 1] = Math.min(d[4 * k + 1], 255); d[4 * k + 2] = Math.min(d[4 * k + 2], 255);
+    }
+    if (performance.now() - t > 8) {                 // oddaj wątek: gest palcem i rysowanie klatki idą w przerwie
+      await new Promise((ok) => setTimeout(ok, 0));
+      if (nr !== numerRysunku) return;
+      t = performance.now();
+    }
+  }
+  g.putImageData(im, 0, 0);
+  pokaz();
+}
+
+function pokaz() {                        // podkład ze światłem w bieżącym przybliżeniu + strzałki w skali ekranu
+  const g = mapa.getContext("2d"), s = devicePixelRatio || 1, sk = widok.s;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#000"; g.fillRect(0, 0, mapa.width, mapa.height);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";        // kratka 4 m wygładzona - ostrość dają obrysy
+  g.setTransform(sk, 0, 0, sk, -widok.ox * sk, -widok.oy * sk); g.drawImage(zrodlo, 0, 0);
+  const a = sk / m.DX;                                                      // piksele urządzenia na metr
+  const doEkranu = () => g.setTransform(a, 0, 0, -a, (-m.X0 / m.DX - widok.ox) * sk, (m.Y1 / m.DY - widok.oy) * sk);
+  doEkranu(); g.lineCap = g.lineJoin = "round";
+  g.fillStyle = "rgba(40,90,150,.55)"; g.fill(WODY);
+  g.strokeStyle = "rgba(90,150,220,.8)"; g.lineWidth = Math.max(2 * s / a, 3); g.stroke(RZEKI);
+  JEZDNIE.forEach((p, k) => { g.strokeStyle = `rgba(235,235,240,${k ? 0.32 : 0.2})`; g.lineWidth = Math.max(SZER_JEZDNI[k], (k + 1) * 0.8 * s / a); g.stroke(p); });
+  g.strokeStyle = "rgba(220,220,220,.75)"; g.lineWidth = Math.max(1.5 * s / a, 1.5); g.setLineDash([6 * s / a, 4 * s / a]); g.stroke(TORY); g.setLineDash([]);
+  if (sk > 2.5 * s) {                                                       // obrysy budynków, gdy widać już kształty
+    g.fillStyle = "rgba(24,24,30,.62)"; g.fill(budynki);
+    g.strokeStyle = "rgba(235,235,240,.7)"; g.lineWidth = Math.min(1.2 * s, 0.25 * sk) / a; g.lineJoin = "round"; g.stroke(budynki);
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  napisy(g, a, s);
+  if (!P) return;
+  const ekr = (j, i) => [(j - widok.ox) * sk, (i - widok.oy) * sk];
+  const [px, py] = ekr((P.x - m.X0) / m.DX, (m.Y1 - P.y) / m.DY);
+  if (okno) { const [a, b] = ekr(okno.j0, okno.i0); g.strokeStyle = "rgba(255,255,255,.25)"; g.lineWidth = 1 * s; g.strokeRect(a, b, okno.n * sk, okno.n * sk); }
+  const dl = Math.min(mapa.width, mapa.height) * 0.22, kolor = getComputedStyle(document.documentElement);
+  const KOLOR_FM = { slychac: "czysta", granica: "czesciowo" };
+  const cele = rodzaj.rtv ? fmSlyszalne().filter((p, k, a) => a.findIndex((q) => q.stacja === p.stacja) === k)   // jeden nadajnik = jedna strzałka
+                                  : lista();
+  cele.slice(0, ILE_SWIATEL).forEach((st, n) => {
+    const a = st.azymut * Math.PI / 180, ex = px + Math.sin(a) * dl, ey = py - Math.cos(a) * dl;
+    g.strokeStyle = g.fillStyle = kolor.getPropertyValue(`--${KOLOR_FM[st.ocena] || st.ocena}`).trim();
+    g.lineWidth = (n === 0 ? 3 : 1.8) * s; g.globalAlpha = n === 0 ? 1 : 0.8;
+    g.beginPath(); g.moveTo(px, py); g.lineTo(ex, ey); g.stroke();
+    const h = 9 * s; g.beginPath(); g.moveTo(ex, ey);
+    g.lineTo(ex - h * Math.sin(a - 0.4), ey + h * Math.cos(a - 0.4)); g.lineTo(ex - h * Math.sin(a + 0.4), ey + h * Math.cos(a + 0.4)); g.fill();
+    g.font = `${12 * s}px system-ui`; g.fillText(String(n + 1), ex + 5 * s * Math.sin(a) + 3 * s, ey - 5 * s * Math.cos(a) + 4 * s);
+  });
+  g.globalAlpha = 1;
+  const r = (naMapie.length > 24 ? 4 : 7) * s;           // nadajniki liczone na mapie: maszt (trójkąt) w kolorze oceny drogi fali
+  for (const n of naMapie) {
+    const [nx, ny] = ekr((n.x - m.X0) / m.DX, (m.Y1 - n.y) / m.DY);
+    if (nx < -r || ny < -r || nx > mapa.width + r || ny > mapa.height + r) continue;
+    g.fillStyle = kolor.getPropertyValue(`--${KOLOR_FM[n.ocena] || n.ocena}`).trim() || "#fff"; g.strokeStyle = "#000"; g.lineWidth = 1.5 * s;
+    g.beginPath(); g.moveTo(nx, ny - r * 1.3); g.lineTo(nx + r, ny + r * 0.8); g.lineTo(nx - r, ny + r * 0.8); g.closePath(); g.fill(); g.stroke();
+  }
+  if (znak) {                              // punkt orientacyjny z karty
+    const [zx, zy] = ekr((znak.x - m.X0) / m.DX, (m.Y1 - znak.y) / m.DY);
+    g.setLineDash([3 * s, 3 * s]); g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1.2 * s;
+    g.beginPath(); g.moveTo(px, py); g.lineTo(zx, zy); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = "#fff"; g.lineWidth = 2.5 * s; g.beginPath(); g.arc(zx, zy, 11 * s, 0, 2 * Math.PI); g.stroke();
+  }
+  g.fillStyle = "#fff"; g.strokeStyle = "#000"; g.lineWidth = 2 * s;
+  g.beginPath(); g.arc(px, py, 5 * s, 0, 2 * Math.PI); g.fill(); g.stroke();
+}
+
+function napisy(g, a, s) {                // nazwy ulic (od 1:~4000) i numery domów (duże zbliżenie); bez nakładania się
+  const ekr = (x, y) => [(x - m.X0) / m.DX * widok.s - widok.ox * widok.s, (m.Y1 - y) / m.DY * widok.s - widok.oy * widok.s];
+  const zajete = [], wolne = (x, y, w, h) => !zajete.some((b) => Math.abs(b[0] - x) < (b[2] + w) / 2 && Math.abs(b[1] - y) < (b[3] + h) / 2);
+  g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+  if (a > 0.6 * s) {
+    g.font = `600 ${11 * s}px system-ui`;
+    for (const n of NAPISY) {
+      const [x, y] = ekr(n.x, n.y); if (x < -50 || y < -50 || x > mapa.width + 50 || y > mapa.height + 50) continue;
+      const w = g.measureText(n.nazwa).width; if (n.d * a < w * 0.8 || !wolne(x, y, w + 8 * s, 16 * s)) continue;
+      zajete.push([x, y, w + 8 * s, 16 * s]);
+      let kat = n.kat; if (kat > Math.PI / 2) kat -= Math.PI; if (kat < -Math.PI / 2) kat += Math.PI;
+      g.save(); g.translate(x, y); g.rotate(-kat);
+      g.strokeStyle = "rgba(0,0,0,.85)"; g.lineWidth = 3 * s; g.strokeText(n.nazwa, 0, 0); g.fillStyle = "#f2f2f4"; g.fillText(n.nazwa, 0, 0); g.restore();
+    }
+  }
+  if (a > 2.2 * s) {
+    g.font = `${10 * s}px system-ui`;
+    for (const ad of ADRESY) {
+      const [x, y] = ekr(ad.x, ad.y); if (x < 0 || y < 0 || x > mapa.width || y > mapa.height) continue;
+      const w = g.measureText(ad.nr).width; if (!wolne(x, y, w + 4 * s, 12 * s)) continue; zajete.push([x, y, w + 4 * s, 12 * s]);
+      g.strokeStyle = "rgba(0,0,0,.8)"; g.lineWidth = 2.5 * s; g.strokeText(ad.nr, x, y); g.fillStyle = "#e8c25a"; g.fillText(ad.nr, x, y);
+    }
+  }
+}
+
+// wyszukiwarka adresu - tylko na danych wczytanych do telefonu, nic nie jest wysyłane
+function znajdz(q) {
+  const slowa = bezOgonkow(q).split(/[\s,]+/).filter(Boolean); if (!slowa.length) return [];
+  const nr = slowa.find((w) => /^\d/.test(w)), reszta = slowa.filter((w) => w !== nr);
+  const naMapie = (ad) => ad.x >= m.X0 && ad.x < m.X0 + NX * m.DX && ad.y <= m.Y1 && ad.y > m.Y1 - NY * m.DY;
+  const traf = ADRESY.filter((ad) => reszta.every((w) => ad.klucz.includes(w)) && (!nr || bezOgonkow(ad.nr).startsWith(nr)));
+  znajdz.pozaMapa = traf.length > 0 && !traf.some(naMapie);
+  return traf.filter(naMapie)
+    .sort((p, q2) => (nr ? (bezOgonkow(p.nr) === nr) - (bezOgonkow(q2.nr) === nr) : 0) * -1 || p.klucz.length - q2.klucz.length || parseInt(p.nr) - parseInt(q2.nr))
+    .slice(0, 8);
+}
+$("szukaj").oninput = () => {
+  const box = $("podpowiedzi"); box.replaceChildren();
+  for (const ad of znajdz($("szukaj").value)) {
+    const b = document.createElement("button"); b.textContent = `${ad.ulica} ${ad.nr}${ad.ulica === ad.msc ? "" : ", " + ad.msc}`; b.style.textAlign = "left";
+    b.onclick = () => { box.replaceChildren(); $("szukaj").value = b.textContent; doPunktu(ad.x, ad.y); };
+    box.append(b);
+  }
+  if (znajdz.pozaMapa) { const d = document.createElement("div"); d.className = "maly"; d.textContent = "Ten adres leży poza mapą (ok. 5,8 × 5,8 km wokół środka mapy)."; box.append(d); }
+};
+$("szukaj").onkeydown = (e) => { if (e.key === "Enter") $("podpowiedzi").querySelector("button")?.click(); };
+function doPunktu(x, y) {                  // przybliż na punkt i licz
+  widok.s = Math.max(widok.s, mapa.width * m.DX / 400); ogranicz();       // ok. 400 m na szerokość mapy - widać ulice i numery
+  widok.ox = (x - m.X0) / m.DX - mapa.width / widok.s / 2; widok.oy = (m.Y1 - y) / m.DY - (mapa.height - zaslon()) / widok.s / 2; ogranicz();
+  ustaw(x, y);
+}
+
+// azymuty silnika są w osiach mapy; w układzie 2180 północ siatki ≠ geograficzna (zbieżność południków, Garwolin +2,06°) - pokazujemy geograficzny
+const ZB = meta.uklad?.zbieznosc_deg ?? 0, geo = (az) => Math.round((az + ZB + 360) % 360) % 360;
+const kier = (az) => `${geo(az)}° ${KOMPAS[Math.round(geo(az) / 22.5) % 16]}`;
+const STRONY = ["północ", "północny wschód", "wschód", "południowy wschód", "południe", "południowy zachód", "zachód", "północny zachód"];
+const strona = (az) => STRONY[Math.round(geo(az) / 45) % 8];
+const ladnie = (t) => t.toLowerCase().replace(/(^|[\s/(-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
+const ULOZENIE = { H: "poziomo — pręty anteny równolegle do ziemi", V: "pionowo — pręty anteny w pionie" };
+function sila(typ, E) {                   // natężenie wobec progów -> słowo i rada dla montującego
+  const p = PROGI_RTV[typ];
+  if (E >= p.slychac + 10) return ["mocny", "czysta", "wystarczy zwykła, niewielka antena kierunkowa"];
+  if (E >= p.slychac) return ["dobry", "czysta", "zwykła antena kierunkowa"];
+  if (E >= p.granica) return ["słaby", "czesciowo", "antena kierunkowa o dużym zysku, jak najwyżej; czasem potrzebny wzmacniacz masztowy"];
+  return ["brak", "nie", "na tej wysokości odbioru nie będzie — podnieś antenę albo sprawdź inny kierunek"];
+}
+const odl = (km) => (km < 1 ? `${Math.round(km * 100) * 10} m` : `${km.toFixed(0)} km`);   // w Warszawie nadajnik bywa kilkaset metrów od punktu
+function kierunkiRtv() {                  // nadajniki (kierunki) z programami, które tu odbierzesz; najlepszy pierwszy
+  const g = new Map();                     // jeden ośrodek bywa kilkoma grupami (różne anteny) - łączymy po nazwie stacji
+  for (const p of rtvLista()) { const k = p.stacja.toLowerCase().replace(/[^\p{L}]/gu, ""); if (!g.has(k)) g.set(k, []); g.get(k).push(p); }
+  const ile = (ps, oc) => new Set(ps.filter((p) => oc.includes(p.ocena)).map((p) => p.program)).size;
+  return [...g.values()].map((ps) => ({ ps, ok: ps.filter((p) => p.ocena !== "nie"), gis: new Set(ps.map((p) => p.gi)),
+      dobre: ile(ps, ["slychac"]), wszystkie: ile(ps, ["slychac", "granica"]), E: Math.max(...ps.map((p) => p.E_dBuVm)), p0: ps[0] }))
+    .sort((a, b) => b.dobre - a.dobre || b.wszystkie - a.wszystkie || b.E - a.E);   // pewny odbiór przed liczbą programów
+}
+function kompas(az) {
+  return `<svg viewBox="-50 -50 100 100" class="kompas" role="img" aria-label="Kierunek ${geo(az)} stopni">
+    <circle r="46" class="tarcza"/>${Array.from({ length: 36 }, (_, k) => `<line y1="-46" y2="${k % 9 ? -42 : -38}" transform="rotate(${k * 10})" class="kreska"/>`).join("")}
+    <text y="-27" class="litera">N</text><text x="30" y="4" class="litera mala">E</text><text y="34" class="litera mala">S</text><text x="-30" y="4" class="litera mala">W</text>
+    <g transform="rotate(${geo(az)})"><line y1="16" y2="-34" class="igla"/><path d="M0 -42 L7 -28 L-7 -28 Z" class="grot"/></g><circle r="3.5" class="srodek"/></svg>`;
+}
+// jak znaleźć kierunek w terenie: wysoki budynek albo maszt na linii do nadajnika (z modelu pokrycia) i ulica biegnąca w tę stronę
+let znak = null;                          // {x, y} punktu orientacyjnego - kółko na mapie
+const najblizszyAdres = (x, y, maks) => { let b = null, bd = maks * maks;
+  for (const a of ADRESY) { const d = (a.x - x) ** 2 + (a.y - y) ** 2; if (d < bd) { bd = d; b = a; } } return b; };
+function orientacja(az, cel) {            // cel: {x, y, opis} gdy celem jest stacja na mapie (komórkowe)
+  const wynik = []; znak = null;
+  const ra = az * Math.PI / 180, ux = Math.sin(ra), uy = Math.cos(ra);
+  if (cel && Math.hypot(cel.x - P.x, cel.y - P.y) < 1500) {
+    const d = Math.hypot(cel.x - P.x, cel.y - P.y);
+    znak = { x: cel.x, y: cel.y };
+    wynik.push(`Stacja jest ${d < 1000 ? Math.round(d / 10) * 10 + " m" : (d / 1000).toFixed(1).replace(".", ",") + " km"} stąd — maszt albo anteny na dachu (${cel.opis}) zwykle widać z dachu; celuj prosto w nie.`);
+  } else {
+    let best = null;                       // najwyższy budynek/maszt w wąskim klinie ±3° od 80 m do 1,5 km
+    for (let da = -3; da <= 3; da += 1) {
+      const b = (az + da) * Math.PI / 180, sx = Math.sin(b), sy = Math.cos(b);
+      for (let d = 80; d <= 1500; d += 4) {
+        const x = P.x + sx * d, y = P.y + sy * d, j = Math.floor((x - m.X0) / m.DX), i = Math.floor((m.Y1 - y) / m.DY);
+        if (i < 0 || j < 0 || i >= NY || j >= NX) break;
+        const k = i * NX + j, h = t.O[k] - t.G[k];
+        if (t.BUD[k] && h >= 12 && (!best || h - Math.abs(da) * 2 > best.w)) best = { x, y, h, d, w: h - Math.abs(da) * 2 };
+      }
+    }
+    if (best) {
+      znak = { x: best.x, y: best.y };
+      const ad = najblizszyAdres(best.x, best.y, 60);
+      wynik.push(`${best.h >= 25 ? "Wysoki obiekt — wieża, komin albo maszt" : "Najwyższy budynek na tej linii"} (ok. ${best.h.toFixed(0)} m) ${Math.round(best.d / 10) * 10} m w tę stronę${ad ? `, przy ${ad.ulica} ${ad.nr}` : ""} — zaznaczony kółkiem na mapie. Antena celuje tuż nad nim.`);
+    }
+  }
+  let ul = null;                           // ulica w pobliżu biegnąca w kierunku nadajnika (±7°)
+  for (const [nazwa, l] of mw.ulice) for (let k = 0; k + 3 < l.length; k += 2) {
+    const ax = l[k] * mw.skala, ay = l[k + 1] * mw.skala, bx = l[k + 2] * mw.skala, by = l[k + 3] * mw.skala, dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
+    if (L < 60) continue;
+    const kat = Math.abs(((Math.atan2(dx, dy) * 180 / Math.PI - az) % 180 + 180) % 180), odch = Math.min(kat, 180 - kat);
+    if (odch > 7) continue;
+    const q = Math.min(Math.max(((P.x - ax) * dx + (P.y - ay) * dy) / (L * L), 0), 1), odl = Math.hypot(ax + q * dx - P.x, ay + q * dy - P.y);
+    if (odl < 400 && (!ul || odl < ul.odl)) ul = { nazwa, odl, odch };
+  }
+  if (ul) wynik.push(`Ulica ${ul.nazwa}${ul.odl > 30 ? ` (${Math.round(ul.odl / 10) * 10} m stąd)` : ""} biegnie w tę stronę${ul.odch >= 2 ? ` (różnica ${Math.round(ul.odch)}°)` : ""} — ustaw antenę równolegle do niej, końcem na ${strona(az)}.`);
+  wynik.push(`Kompas w telefonie: obracaj się, aż pokaże ${geo(az)}°. Przy metalu i blachach kompas potrafi się mylić o kilkanaście stopni — sprawdź, odchodząc kilka kroków.`);
+  return wynik;
+}
+const pamiecWysokosci = new Map();
+async function wysokosci(zywy) {          // od jakiej wysokości jest dobry odbiór najlepszego kierunku (radio/TV)
+  const k = `${P.x}|${P.y}|${rodzaj.id}`, typ = rodzaj.id;
+  if (!pamiecWysokosci.has(k)) pamiecWysokosci.set(k, zlecaj({ typ: "wysokosci", P, rodzaj: typ, hs: [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] }, { pilne: true }));
+  const { wys } = await pamiecWysokosci.get(k);
+  if (!zywy() || rodzaj.id !== typ) return;
+  const best = kierunkiRtv()[0], el = $("kartaWys"); if (!best || !el) return;
+  const od = (oc) => wys.find((w) => w.fm.some((p) => best.gis.has(p.gi) && (!program || p.program === program) && oc.includes(p.ocena)))?.h;
+  const dobry = od(["slychac"]), granica = od(["slychac", "granica"]);
+  el.innerHTML = dobry != null ? `<b>od ok. ${dobry} m</b> nad gruntem dobry odbiór` + (granica != null && granica < dobry ? `; od ${granica} m — na granicy` : "")
+    : granica != null ? `<b>od ok. ${granica} m</b> tylko na granicy odbioru (do 30 m nie robi się lepiej)` : "<b>do 30 m brak odbioru</b> z tego kierunku";
+}
+function karta() {                        // odpowiedź dla montującego: gdzie skierować, jak ułożyć, na co nastroić, jak wysoko
+  const el = $("karta");
+  if (rodzaj.rtv) {
+    const ks = kierunkiRtv(), b = ks[0];
+    if (!b) { el.innerHTML = `<p>Brak nadajników tego rodzaju w zasięgu.</p>`; return; }
+    const [slowo, klasa, rada] = sila(rodzaj.id, b.E), widac = b.ok.length ? b.ok : b.ps.slice(0, 3);
+    const kanaly = [...new Map(widac.map((p) => [p.kanal || p.mhz.toFixed(1), p])).values()].sort((a, b) => (parseFloat(a.kanal) || a.mhz) - (parseFloat(b.kanal) || b.mhz));
+    const vhf = rodzaj.id === "dvbt" && kanaly.some((p) => +p.kanal <= 12);
+    const co = rodzaj.id === "dvbt" ? `Kanały do strojenia: ${kanaly.map((p) => `<b>${p.kanal}</b> <span class="maly">${p.program}</span>`).join(" · ")}`
+             : rodzaj.id === "dab" ? `Blok: ${kanaly.map((p) => `<b>${p.kanal}</b> <span class="maly">${p.program}</span>`).join(" · ")}`
+             : `Stacje: ${kanaly.slice(0, 6).map((p) => `<b>${p.mhz.toFixed(1)}</b> <span class="maly">${p.program}</span>`).join(" · ")}`;
+    const antena = rodzaj.id === "dvbt" ? (vhf ? "Antena UHF + VHF (kombinowana): jeden z multipleksów nadaje w paśmie VHF (kanał ≤ 12)." : "Antena UHF (kanały 21–48).")
+                 : rodzaj.id === "dab" ? "Antena DAB+ (pasmo III)." : "Antena FM (UKF).";
+    const inne = ks.slice(1).filter((k) => k.ok.length).slice(0, 3)
+      .map((k) => `${ladnie(k.p0.stacja)} — ${geo(k.p0.azymut)}° ${strona(k.p0.azymut)}, ${odl(k.p0.km)} (${k.wszystkie} ${rodzaj.id === "fm" ? "stacji" : "multipl."})`);
+    el.innerHTML = `<div class="kier">${kompas(b.p0.azymut)}<div><div class="podpis">Skieruj antenę</div>
+        <div class="azymut">${geo(b.p0.azymut)}° <span>${strona(b.p0.azymut)}</span></div>
+        <div>na nadajnik <b>${ladnie(b.p0.stacja)}</b>, ${odl(b.p0.km)}</div></div></div>
+      <dl>
+        <dt>Ułożenie</dt><dd>${ULOZENIE[b.p0.pol] ?? "—"}</dd>
+        <dt>Sygnał</dt><dd><b class="${klasa}">${slowo}</b> na ${hTekst(hRx)} — ${rada}</dd>
+        <dt>Wysokość</dt><dd id="kartaWys" class="maly">liczę…</dd>
+        <dt>Antena</dt><dd>${antena}</dd>
+      </dl>
+      <p class="kanaly">${co}</p>
+      <div class="namiar"><div class="podpis">Jak namierzyć na dachu</div><ul>${orientacja(b.p0.azymut).map((t) => `<li>${t}</li>`).join("")}</ul></div>
+      ${inne.length ? `<p class="maly">Z innych kierunków też: ${inne.join("; ")}. Jedna antena kierunkowa łapie jeden kierunek.</p>` : ""}`;
+    return;
+  }
+  const ls = lista(), b = ls[0];
+  if (!b) { el.innerHTML = `<p>Brak stacji ${siec.re ? siec.nazwa + " " : ""}z ${rodzaj.nazwa} w promieniu 10 km.</p>`; return; }
+  const DROGA = { czysta: "czysta — nic nie zasłania", czesciowo: "częściowo zasłonięta (drzewa albo dachy)", zaslonieta: "zasłonięta — sygnał przez przeszkody" };
+  const drugi = ls[1];
+  el.innerHTML = `<div class="kier">${kompas(b.azymut)}<div><div class="podpis">Skieruj antenę zewnętrzną</div>
+      <div class="azymut">${geo(b.azymut)}° <span>${strona(b.azymut)}</span></div>
+      <div>na stację ${b.adres.replace(/^(Garwolin|Warszawa), /, "")}, ${b.km < 1 ? Math.round(b.km * 1000) + " m" : b.km.toFixed(1).replace(".", ",") + " km"}</div></div></div>
+    <dl>
+      <dt>Sieć</dt><dd>${[...new Set(b.operatorzy.map(marka))].join(", ")}</dd>
+      <dt>Droga fali</dt><dd><b class="${b.ocena}">${DROGA[b.ocena]}</b> na ${hTekst(hRx)}</dd>
+      <dt>Pasma</dt><dd>${GRUPY.filter((g) => b.pasma.some((p) => PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p]))).map((g) => g.nazwa).join("; ")}</dd>
+    </dl>
+    <div class="namiar"><div class="podpis">Jak namierzyć na dachu</div><ul>${orientacja(b.azymut, { x: b.x, y: b.y, opis: b.adres.replace(/^(Garwolin|Warszawa), /, "") }).map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    ${b.ocena !== "czysta" ? `<p class="maly">Spróbuj wyżej (suwak wysokości)${drugi ? ` albo na drugą stację: ${geo(drugi.azymut)}° ${strona(drugi.azymut)}, ${drugi.adres.replace(/^(Garwolin|Warszawa), /, "")} (${OCENA[drugi.ocena]})` : ""}.</p>` : ""}
+    <p class="maly">Jedna stacja bywa wspólna dla kilku sieci; rejestr UKE podaje tylko właściciela pozwolenia.</p>`;
+}
+const OCENA = { czysta: "czysta", czesciowo: "częściowo", zaslonieta: "zasłonięta", slychac: "odbiór", granica: "granica", nie: "nie" };
+function wiersz(tab, kom) {
+  const trr = document.createElement("tr");
+  for (const [tekst, klasa] of kom) { const td = document.createElement("td"); td.textContent = tekst; if (klasa) td.className = klasa; trr.append(td); }
+  $(tab).tBodies[0].append(trr);
+}
+function tabele() {
+  for (const id of ["stacje", "fm"]) $(id).tBodies[0].replaceChildren();
+  const ls = lista();
+  if (!ls.length && rodzaj.id !== "fm") wiersz("stacje", [[`Brak stacji z ${rodzaj.nazwa} w promieniu 10 km.`, "l"]]);
+  ls.forEach((s, n) => wiersz("stacje", [
+    [n + 1], [kier(s.azymut)], [s.km.toFixed(2)], [OCENA[s.ocena], `l ${s.ocena}`],
+    [`${s.nadwyzka_min_db.toFixed(0)}–${s.nadwyzka_max_db.toFixed(0)}`], [`${Math.round(s.h_ant_uzyta)}${s.h_ant_zalozona ? "*" : ""}`],
+    [s.operatorzy.map((o) => o.split(" ")[0]).join(", "), "l"], [s.pasma.join(" "), "l"], [s.adres.replace(/^(Garwolin|Warszawa), /, ""), "l"]]));
+  const wszystkie = rtvLista(), fm = wszystkie.filter((p) => p.ocena !== "nie");
+  fm.forEach((p) => wiersz("fm", [[RTV[p.typ].nazwa, "l"], [p.program + (p.kanal && p.typ !== "fm" ? ` (kanał ${p.kanal})` : ""), "l"], [p.mhz.toFixed(1)], [p.E_dBuVm.toFixed(0)], [OCENA[p.ocena], `l ${p.ocena}`],
+    [kier(p.azymut)], [p.km.toFixed(0)], [p.stacja, "l"], [p.zaslona_db >= 1 ? `${p.zaslona_db.toFixed(0)} dB (${p.krawedz})` : "–", "l"]]));
+  wiersz("fm", [["", "l"], [`${wszystkie.length - fm.length} kolejnych poniżej progu granicy — bez odbioru`, "l"]]);
+}
+
+async function ustaw(x, y) {
+  const j = Math.floor((x - m.X0) / m.DX), i = Math.floor((m.Y1 - y) / m.DY);
+  if (i < 0 || j < 0 || i >= NY || j >= NX) { $("status").textContent = "Ten punkt leży poza obszarem mapy."; return; }
+  const nr = ++nrPrzebiegu, t0 = performance.now(), zywy = () => nr === nrPrzebiegu;
+  P = { x: m.X0 + (j + 0.5) * m.DX, y: m.Y1 - (i + 0.5) * m.DY };
+  drobna = null; okno = null; rysujMape();
+  $("status").textContent = "liczę kierunki…";
+  opiszDach();
+  wynik = await zlecaj({ typ: "punkt", P, hRx }, { pilne: true });
+  if (!zywy()) return;
+  const tK = performance.now();
+  if (rodzaj.rtv) wypelnijProgramy();
+  tabele(); pokaz(); karta(); if (rodzaj.rtv) wysokosci(zywy);
+  const n = Math.min(OKNO, NX, NY);
+  okno = { i0: Math.min(Math.max(i - (n >> 1), 0), NY - n), j0: Math.min(Math.max(j - (n >> 1), 0), NX - n), n, k: 1 };
+  const nm = Math.floor(Math.min(NX, NY) / KROK_MAPY), oknoMapy = { i0: 0, j0: 0, n: nm, k: KROK_MAPY };
+
+  // zadania światła: stacje komórkowe (strata L -> jasność) albo nadajniki radia/TV (natężenie E -> jasność)
+  let zadania, kol, mobilne = !rodzaj.rtv, klucz;
+  if (mobilne) {
+    const ls = lista(); kol = GRUPY.map((gr) => barwa(gr.f));
+    const px = promienX(ls.length);
+    const promien = new Map(ls.map((s) => {
+      const d = ls.map((q) => Math.hypot(q.x - s.x, q.y - s.y)).sort((a, b) => a - b);   // d[0] = 0 (ona sama)
+      return [s, Math.max(PROMIEN_MIN, px * (d[3] ?? Infinity))];
+    }));
+    const przytnij = (o, s) => {             // kwadrat okna o (siatka co o.k komórek) wokół stacji, w granicach o
+      const r = promien.get(s) ?? Infinity; if (o.k === 1 || !isFinite(r)) return o;
+      const kr = o.k * m.DX, n = Math.min(o.n, 2 * Math.ceil(r / kr) + 1);
+      if (n >= o.n) return o;
+      const ic = (m.Y1 - s.y) / kr - o.i0 / o.k, jc = (s.x - m.X0) / kr - o.j0 / o.k;
+      const c = (v) => Math.min(Math.max(Math.round(v - (n >> 1)), 0), o.n - n);
+      return { i0: o.i0 + c(ic) * o.k, j0: o.j0 + c(jc) * o.k, n, k: o.k };
+    };
+    zadania = (o, stacje) => stacje.map((s) => {
+      const fs = GRUPY.map((g) => s.pasma.some((p) => PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p])) ? g.f : null);   // s.pasma zawężone do rodzaju
+      return { z: { typ: "swiatlo", okno: przytnij(o, s), hRx, S: { x: s.x, y: s.y, h: s.h_ant_uzyta }, f: fs.filter(Boolean) },
+               wynik: (r) => { let q = 0; return fs.map((f) => (f ? r.L[q++] : null)); } };
+    });
+    // cała mapa: stacje do 3 km za jej krawędzią (dalsze zmieniają jasność w < 0,2% miejsc - zmierzone), od najbliższych środka
+    const zaKrawedzia = (s) => Math.max(m.X0 - s.x, s.x - (m.X0 + NX * m.DX), (m.Y1 - NY * m.DY) - s.y, s.y - m.Y1, 0);
+    if (!isFinite(ileStacji)) {
+      zadania.drobne = ls.slice(0, ILE_SWIATEL);
+      zadania.grube = ls.filter((s) => zaKrawedzia(s) <= Math.min(ZASIEG_MAPY, promien.get(s))).sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+      klucz = `${rodzaj.id}|${siec.nazwa}|${hRx}`;
+    } else {                               // domyślnie (decyzja Maćka 2026-10-07): światło tylko ileStacji stacji najbliższych punktu, bez przycinania
+      const naj = [...ls].sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y)).slice(0, ileStacji);
+      naj.forEach((s) => promien.delete(s));
+      zadania.drobne = zadania.grube = naj;
+      klucz = `${rodzaj.id}|${siec.nazwa}|${hRx}|${naj.map((s) => `${s.x},${s.y}`).join(";")}`;
+    }
+  } else {
+    const R = RTV[rodzaj.id]; kol = [R.kol];
+    const gi = [...new Set(rtvLista().map((p) => p.gi))].slice(0, ILE_RTV);   // najmocniejsze grupy w punkcie; 3 zamiast 6 nie zmienia mapy (zmierzone: 0,0% komórek)
+    zadania = (o, grupy) => grupy.map((g) => ({ z: { typ: "pole", okno: o, hRx, gi: g, rodzaj: rodzaj.id, program }, wynik: (r) => [r.E] }));
+    zadania.drobne = zadania.grube = gi;
+    klucz = `${rodzaj.id}|${hRx}|${program}|${gi.join(",")}`;
+    naMapie = gi.map((g) => rtvLista().find((p) => p.gi === g)).filter(Boolean)   // położenie z kierunku i odległości od punktu
+      .map((p) => ({ x: P.x + Math.sin(p.azymut * Math.PI / 180) * p.km * 1000, y: P.y + Math.cos(p.azymut * Math.PI / 180) * p.km * 1000, ocena: p.ocena }));
+  }
+  if (mobilne) naMapie = zadania.grube.map((s) => ({ x: s.x, y: s.y, ocena: s.ocena }));
+  // radio/TV: skala przypięta do progów odbioru (od granicy - 4 dB do dobrego odbioru + 4 dB), jednakowa na całej mapie
+  const prog = PROGI_RTV[rodzaj.id], skala = prog && { ciemno: prog.granica - 4, jasno: prog.slychac + 4 };
+  const jasnosc = mobilne ? (L) => Math.min(Math.max((L_CIEMNO - L) / (L_CIEMNO - L_JASNO), 0), 1)
+                          : (E) => Math.min(Math.max((E - skala.ciemno) / (skala.jasno - skala.ciemno), 0), 1);
+  const opiszSkale = () => {
+    $("legenda").textContent = `Jasność = natężenie pola ${RTV[rodzaj.id].nazwa} (najmocniejszy z ${zadania.grube.length} nadajników najsilniejszych w tym punkcie), ITU-R P.1546: ` +
+      `ciemno poniżej ${skala.ciemno} dBµV/m, pełny blask od ${skala.jasno}. Dobry odbiór od ${prog.slychac}, granica ${prog.granica}.` + TROJKATY;
+  };
+  // warstwa z wyników po kolei: najmniejsza strata / największe pole z dotychczasowych zadań, w każdej barwie
+  const warstwa = (o) => ({ okno: o, kol, mobilne, A: kol.map(() => null), suma: kol.map(() => null) });
+  const dolicz = (w, wyn, o = w.okno) => wyn.forEach((a, b) => {   // o: okno wyniku (przycięte wokół stacji albo całe w.okno)
+    if (!a) return;
+    const W0 = w.okno, s = w.suma[b] ??= new Float32Array(W0.n * W0.n).fill(mobilne ? Infinity : -Infinity);
+    const di = (o.i0 - W0.i0) / W0.k, dj = (o.j0 - W0.j0) / W0.k;
+    for (let i = 0; i < o.n; i++) for (let j = 0, q = i * o.n, p = (i + di) * W0.n + dj; j < o.n; j++, q++, p++)
+      if (mobilne ? a[q] < s[p] : a[q] > s[p]) s[p] = a[q];
+    w.A[b] = Float32Array.from(s, jasnosc);
+    if (w.okno.k > 1) rozmyj(w.A[b], w.okno.n);
+  });
+  const licz = (o, lista, poKazdym) => Promise.all(zadania(o, lista).map((zd) =>
+    zlecaj(zd.z, { zywe: zywy }).then((r) => { if (r && zywy()) poKazdym(zd.wynik(r), zd.z.okno); })));
+
+  const opis = mobilne ? `${zadania.grube.length} stacji ${rodzaj.id === "wszystko" ? "" : rodzaj.nazwa + " "}` : `${zadania.grube.length} nadajników ${RTV[rodzaj.id].nazwa} `;
+  $("status").textContent = `kierunki ${((performance.now() - t0) / 1000).toFixed(2)} s; liczę światło…`;
+  const wD = warstwa(okno);
+  const liczGruba = async () => {
+    if (pamiecGrubej.get(klucz)) { gruba = pamiecGrubej.get(klucz); return; }
+    const w = warstwa(oknoMapy); let ile = 0, ostatnio = 0;
+    gruba = w;
+    $("status").textContent = `światło na całej mapie: 0/${zadania.grube.length}…`;
+    rysujMape();
+    await licz(oknoMapy, zadania.grube, (wyn, o) => {
+      dolicz(w, wyn, o); ile++;
+      $("status").textContent = `światło na całej mapie: ${ile}/${zadania.grube.length} (${opis.trim()})…`;
+      if (performance.now() - ostatnio > 700) { ostatnio = performance.now(); rysujMape(); }   // dorysowuj co chwilę, nie po każdej stacji
+    });                                  // w kolejce za okolicą; przy 3 + 3 zadaniach radia/TV liczą się naraz
+    if (!zywy()) return;
+    pamiecGrubej.set(klucz, w);
+    if (new URLSearchParams(location.search).has("promien")) {   // sprawdzanie zbieżności: najlepsza strata/pole w każdej komórce
+      const b = new Float32Array(w.okno.n * w.okno.n).fill(NaN);
+      for (const sm of w.suma) if (sm) for (let q = 0; q < b.length; q++) if (!(mobilne ? sm[q] >= b[q] : sm[q] <= b[q])) b[q] = sm[q];
+      window.__gruba = b;
+    }
+  };
+  let tD = 0;                             // okolica i cała mapa liczą się naraz; okolica pokazuje się, gdy gotowa
+  const pD = licz(okno, zadania.drobne, (wyn) => dolicz(wD, wyn)).then(() => {
+    if (!zywy()) return;
+    drobna = wD; if (!mobilne) opiszSkale(); tD = performance.now(); rysujMape();
+  });
+  await Promise.all([pD, liczGruba()]);
+  if (!zywy()) return;
+  rysujMape();
+  const sek = (a, b) => ((b - a) / 1000).toFixed(1).replace(".", ",");
+  const czas = `Gotowe w ${sek(t0, performance.now())} s (kierunki ${sek(t0, tK)} · okolica ${sek(tK, tD)} · cała mapa ${sek(tK, performance.now())}` +
+               `${pierwszy ? ` · wczytanie danych ${T_DANE.toFixed(1).replace(".", ",")}` : ""}${pierwszy && PACZKI_STAN ? ` · paczki ${PACZKI_STAN.paczki}/${PACZKI_STAN.z}, ${(PACZKI_STAN.bajty / 1e6).toFixed(1).replace(".", ",")} MB, ${Math.round(100 * PACZKI_STAN.komorek / PACZKI_STAN.wszystkich)}% mapy z paczek, ${Math.round(PACZKI_STAN.ms)} ms` : ""}). SYMULACJA.`;
+  pierwszy = false;
+  $("status").textContent = czas;
+}
+
+// dotyk i mysz: jeden palec - przesuwanie (albo punkt, gdy krótko i bez ruchu), dwa palce - przybliżanie
+const palce = new Map(); let gest = null;
+const wUrz = (e) => { const r = mapa.getBoundingClientRect(), d = mapa.width / r.width; return [(e.clientX - r.left) * d, (e.clientY - r.top) * d]; };
+mapa.addEventListener("pointerdown", (e) => {
+  mapa.setPointerCapture(e.pointerId); palce.set(e.pointerId, wUrz(e));
+  gest = palce.size === 1 ? { start: wUrz(e), t: performance.now(), ruch: false } : { ...gest, ruch: true, pinch: null };
+});
+mapa.addEventListener("pointermove", (e) => {
+  if (!palce.has(e.pointerId)) return;
+  const [x, y] = wUrz(e), [x0, y0] = palce.get(e.pointerId); palce.set(e.pointerId, [x, y]);
+  if (palce.size === 1) {
+    if (Math.hypot(x - gest.start[0], y - gest.start[1]) > 8 * (devicePixelRatio || 1)) gest.ruch = true;
+    if (gest.ruch) { widok.ox -= (x - x0) / widok.s; widok.oy -= (y - y0) / widok.s; ogranicz(); pokaz(); }
+  } else if (palce.size === 2) {
+    const [[ax, ay], [bx, by]] = [...palce.values()], d = Math.hypot(ax - bx, ay - by);
+    if (gest.pinch) zoom(d / gest.pinch, (ax + bx) / 2, (ay + by) / 2);
+    gest.pinch = d;
+  }
+});
+const koniec = (e) => {
+  if (!palce.delete(e.pointerId)) return;
+  if (palce.size === 0 && gest && !gest.ruch && performance.now() - gest.t < 600) {
+    const [x, y] = gest.start, j = widok.ox + x / widok.s, i = widok.oy + y / widok.s;
+    if (naTelefonie()) { zwin(true); zakladka("wynik"); }
+    ustaw(m.X0 + j * m.DX, m.Y1 - i * m.DY);
+  }
+  if (palce.size === 1) gest = { ...gest, ruch: true, pinch: null };
+};
+mapa.addEventListener("pointerup", koniec); mapa.addEventListener("pointercancel", koniec);
+mapa.addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = wUrz(e); zoom(Math.exp(-e.deltaY * 0.0015), x, y); }, { passive: false });
+$("zplus").onclick = () => zoom(1.6); $("zminus").onclick = () => zoom(1 / 1.6);
+$("zcaly").onclick = () => { caly(); pokaz(); };
+// arkusz na telefonie: uchwyt przeciągnięty w górę rozwija, w dół zwija; dotknięcie przełącza
+const zwin = (z) => { $("panel").classList.toggle("zwiniety", z); $("uchwyt").setAttribute("aria-expanded", String(!z)); if (z) $("panel").scrollTop = 0; };
+let chwyt = null;
+$("uchwyt").addEventListener("pointerdown", (e) => { chwyt = e.clientY; $("uchwyt").setPointerCapture(e.pointerId); });
+$("uchwyt").addEventListener("pointerup", (e) => {
+  if (chwyt === null) return;
+  const dy = e.clientY - chwyt; chwyt = null;
+  zwin(Math.abs(dy) < 20 ? !$("panel").classList.contains("zwiniety") : dy > 0);
+});
+$("uchwyt").addEventListener("pointercancel", () => { chwyt = null; });
+const naTelefonie = () => matchMedia("(max-width: 820px)").matches;
+if (naTelefonie()) zwin(true);            // start: mapa na większości ekranu, pod spodem sama karta
+const zakladka = (z) => {
+  $("panel").dataset.zakladka = z; $("panel").scrollTop = 0;
+  for (const b of $("zakladki").children) b.setAttribute("aria-selected", String(b.dataset.do === z));
+};
+for (const b of $("zakladki").children) b.onclick = () => { zakladka(b.dataset.do); zwin(false); };
+$("gps").onclick = () => {
+  if (!navigator.geolocation || !isSecureContext) { $("status").textContent = "Położenie z telefonu działa tylko przez HTTPS — dotknij mapy w swoim miejscu."; return; }
+  $("status").textContent = "pytam telefon o położenie…";
+  navigator.geolocation.getCurrentPosition(
+    (p) => { const { latitude: la, longitude: lo } = p.coords, U = meta.uklad;   // tylko lokalnie, nigdzie nie wysyłane
+      if (U) { const [n, e] = na2180(la, lo); doPunktu(e - U.E0, n - U.N0); } else doPunktu((lo - tr.SR[1]) * tr.KX, (la - tr.SR[0]) * tr.KY); },
+    (e) => { $("status").textContent = `Brak położenia (${e.message}) — dotknij mapy.`; }, { enableHighAccuracy: true, timeout: 15000 });
+};
+new ResizeObserver(() => {               // zmiana rozmiaru okna albo obrót telefonu: zachowaj środek widoku
+  const cx = widok.ox + mapa.width / widok.s / 2, cy = widok.oy + mapa.height / widok.s / 2, k = widok.s / sMin;
+  sMin = dopasuj(); widok.s = sMin * k; widok.ox = cx - mapa.width / widok.s / 2; widok.oy = cy - mapa.height / widok.s / 2; ogranicz(); pokaz();
+}).observe(mapa);
+caly(); if (rodzaj.id === "dvbt") ustawH(10); pokazSekcje();
+rysujMape();
+await ustaw(0, 0);
+</script>
+</body>
+</html>

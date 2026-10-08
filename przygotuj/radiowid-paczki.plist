@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Wzor LaunchAgenta (macOS): sed "s|__REPO__|$PWD|; s|__HOME__|$HOME|" przygotuj/radiowid-paczki.plist > ~/Library/LaunchAgents/pl.radiowid.paczki.plist
+     potem: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/pl.radiowid.paczki.plist -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>pl.radiowid.paczki</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>__REPO__/przygotuj/paczki-rano.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>__HOME__/Library/Logs/radiowid-paczki.log</string>
+	<key>StandardOutPath</key>
+	<string>__HOME__/Library/Logs/radiowid-paczki.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>7</integer>
+		<key>Minute</key>
+		<integer>45</integer>
+	</dict>
+</dict>
+</plist>

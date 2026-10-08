@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon-180.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#07090d">
+<title>Światło radiowe — próba na telefonie</title>
+<style>
+  :root { --tlo: #0e0e12; --tekst: #e8e8ea; --przygaszony: #9a9aa2; --linia: #2a2a33; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--tlo); color: var(--tekst); font: 14px/1.45 -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .etykieta { display: inline-block; padding: 2px 8px; border: 1px solid var(--tekst); font-weight: 600; letter-spacing: .08em; font-size: 12px; }
+  p, .maly { color: var(--przygaszony); max-width: 640px; } .maly { font-size: 12px; }
+  .sterowanie { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  select, button { font: inherit; color: var(--tekst); background: #1b1b22; border: 1px solid var(--linia); padding: 8px 10px; border-radius: 6px; }
+  canvas { width: min(560px, 100%); aspect-ratio: 1; image-rendering: pixelated; background: #000; display: block; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: 12px; width: min(560px, 100%); }
+  td, th { border-bottom: 1px solid var(--linia); padding: 4px 6px; text-align: right; font-size: 13px; }
+  th:first-child, td:first-child { text-align: left; }
+</style>
+</head>
+<body>
+<h1>Światło radiowe — Garwolin, okolice rynku <span class="etykieta">SYMULACJA</span></h1>
+<p>Ile fala traci ponad wolną przestrzeń na drodze z nadajnika do odbiornika 1,5 m nad ziemią — kwadrat 1,8 × 1,8 km wokół rynku, siatka 4 m. Jasne = droga czysta, ciemne = cień budynków, drzew albo terenu (0–40 dB). Model: jedna krawędź dominująca (ITU-R P.526), korony drzew (Weissberger), ziemia 4/3; bez odbić. Liczone teraz, w tej przeglądarce. To nie pomiar.</p>
+<div class="sterowanie">
+  <select id="nadajnik"></select>
+  <button id="licz">Licz</button>
+  <button id="test">Test czasu (1 wątek i wszystkie)</button>
+</div>
+<div id="status" class="maly">wczytuję dane…</div>
+<canvas id="mapa" width="450" height="450"></canvas>
+<table id="czasy"><thead><tr><th>przebieg</th><th>wątki</th><th>czas</th><th>najdłuższy wątek</th></tr></thead><tbody></tbody></table>
+<p class="maly" id="zrodla"></p>
+<script type="module">
+import { wczytajZestaw } from "../silnik/dane.js";
+import { dmaxOdbiorniki } from "../silnik/laczony.js";
+
+const W = navigator.hardwareConcurrency || 4;
+const pula = (n) => Array.from({ length: n }, () => new Worker("./praca.js", { type: "module" }));
+let licznik = 0;
+const zlec = (w, z) => new Promise((ok) => {
+  const id = ++licznik;
+  const f = ({ data }) => { if (data.id === id) { w.removeEventListener("message", f); ok(data); } };
+  w.addEventListener("message", f); w.postMessage({ ...z, id });
+});
+const s = (ms) => (ms / 1000).toFixed(2) + " s";
+const $ = (id) => document.getElementById(id);
+
+const t0 = performance.now();
+const { meta, t } = await wczytajZestaw("../dane/rynek");
+const msDane = performance.now() - t0;
+const m = meta.miasto, N = m.nx;
+const odb = { xs: [m.X0 + 0.5 * m.DX, m.X0 + (N - 0.5) * m.DX], ys: [m.Y1 - 0.5 * m.DY, m.Y1 - (m.ny - 0.5) * m.DY] };
+const opcje = meta.nadajniki.flatMap((n) => n.f.map((f) => ({ ...n, f })));
+for (const [k, o] of opcje.entries())
+  $("nadajnik").add(new Option(`${o.nazwa} — ${o.f} MHz (${Math.hypot(o.T[0], o.T[1]) / 1000 < 1 ? "przy rynku" : (Math.hypot(o.T[0], o.T[1]) / 1000).toFixed(0) + " km"})`, k));
+$("zrodla").textContent = "Źródła: " + meta.zrodla.join(" · ");
+
+async function przebieg(robotnicy, o) {
+  const n = robotnicy.length, pas = Math.ceil(m.ny / n), Dmax = dmaxOdbiorniki(odb, o.T), t0 = performance.now();
+  const wyn = await Promise.all(robotnicy.map((w, k) => zlec(w, { T: o.T, f: o.f, Dmax, wiersze: [k * pas, Math.min((k + 1) * pas, m.ny)] })));
+  const nad = new Float32Array(N * m.ny); let p = 0;
+  for (const r of wyn) { nad.set(r.nad, p); p += r.nad.length; }
+  return { nad, ms: performance.now() - t0, maks: Math.max(...wyn.map((r) => r.ms)) };
+}
+
+function barwa(f) {                      // skala barw filmu: 88 MHz czerwien -> 3600 MHz fiolet (logarytmicznie)
+  const x = Math.min(Math.max(Math.log(f / 88) / Math.log(3600 / 88), 0), 1);
+  const h = x * 280, c = (k) => { const a = (k + h / 30) % 12; return 0.5 - 0.5 * Math.max(-1, Math.min(a - 3, 9 - a, 1)); };
+  return [255 * c(0), 255 * c(8), 255 * c(4)];
+}
+function rysuj(nad, f) {
+  const g = $("mapa").getContext("2d"), im = g.createImageData(N, m.ny), [r, gg, b] = barwa(f);
+  for (let k = 0; k < N * m.ny; k++) {
+    const jas = 1 - Math.min(Math.max(nad[k] / 40, 0), 1), bud = t.BUD[k] ? 0.35 : 1;
+    im.data[4 * k] = r * jas * bud; im.data[4 * k + 1] = gg * jas * bud; im.data[4 * k + 2] = b * jas * bud; im.data[4 * k + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+}
+function wiersz(...komorki) {
+  const tr = document.createElement("tr");
+  for (const k of komorki) { const td = document.createElement("td"); td.textContent = k; tr.append(td); }
+  $("czasy").tBodies[0].append(tr);
+}
+
+const wielu = pula(W); let jeden;
+$("status").textContent = `dane ${s(msDane)}; przygotowuję ${W} wątków…`;
+const tR = performance.now();
+const o0 = opcje[0], D0 = dmaxOdbiorniki(odb, o0.T);           // rozgrzewka: jeden wiersz na watek (kompilator JS + dane)
+const rozgrzewka = await Promise.all(wielu.map((w, k) => zlec(w, { T: o0.T, f: o0.f, Dmax: D0, wiersze: [k, k + 1] })));
+wiersz("wczytanie danych (strona)", "–", s(msDane), "–");
+wiersz("dane + rozgrzewka (wątki)", W, s(performance.now() - tR), s(Math.max(...rozgrzewka.map((r) => r.msDane))));
+
+async function licz() {
+  const o = opcje[$("nadajnik").value];
+  $("status").textContent = `liczę: ${o.nazwa}, ${o.f} MHz…`;
+  const r = await przebieg(wielu, o);
+  rysuj(r.nad, o.f);
+  wiersz(`${o.nazwa} ${o.f} MHz`, W, s(r.ms), s(r.maks));
+  $("status").textContent = `gotowe: ${o.nazwa}, ${o.f} MHz — ${s(r.ms)} na ${W} wątkach. SYMULACJA.`;
+}
+$("licz").onclick = licz;
+$("test").onclick = async () => {
+  jeden ??= pula(1);
+  for (const o of opcje) {
+    $("status").textContent = `test: ${o.nazwa} ${o.f} MHz…`;
+    const r = await przebieg(wielu, o), r1 = await przebieg(jeden, o);
+    wiersz(`${o.nazwa} ${o.f} MHz`, W, s(r.ms), s(r.maks)); wiersz(`${o.nazwa} ${o.f} MHz`, 1, s(r1.ms), s(r1.maks));
+  }
+  $("status").textContent = `test gotowy — ${W} wątków; ${navigator.userAgent}`;
+  window.__wynik = [...$("czasy").tBodies[0].rows].map((tr) => tr.innerText);
+};
+await licz();
+</script>
+</body>
+</html>

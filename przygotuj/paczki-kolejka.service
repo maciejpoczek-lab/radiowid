@@ -1,0 +1,19 @@
+# Kolejka paczek 20 km na komputerze testowym (kolejka_paczek.py licz). Start z systemem (loginctl enable-linger maciek).
+# Sama czeka na noc (23-7) i na wolna blokade srodowiska testowego; konczy sie po liscie, STOP albo bledach (wtedy bez restartu).
+[Unit]
+Description=Kolejka paczek 20 km (mapa swiatla radiowego)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/paczki
+ExecStart=%h/paczki/venv/bin/python %h/paczki/kod/kolejka_paczek.py licz
+StandardOutput=append:%h/paczki/kolejka/licz.log
+StandardError=append:%h/paczki/kolejka/licz.log
+Restart=on-failure
+RestartSec=600
+KillMode=mixed
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target
