@@ -6,7 +6,7 @@ RadioWid is a map of radio coverage for all of Poland. It covers FM, DAB+, digit
 Tap a spot and RadioWid shows which transmitters reach it, along which path, and where to point an antenna.
 Every result is a **SIMULATION**, not a measurement.
 
-The page is static: no backend, no tracking, and the user's position never leaves the phone.
+The page is static: no backend, no cookies, and the user's position never leaves the phone.
 All heavy lifting happens in two places:
 - in an offline pipeline that turns open geodata into compact binary "packs";
 - in a dependency-free JavaScript engine that runs in Web Workers.
@@ -55,7 +55,7 @@ python3 -m http.server 8794 --directory _telefon
 
 ## Privacy
 
-The site has no analytics, no cookies and no server-side logging of map requests. A position from the GPS or the address search is used only inside the browser.
+The site sets no cookies and the web server does not log map requests. A position from the GPS or the address search is used only inside the browser. Visits are counted with a self-hosted, cookieless Umami instance, configured to drop everything after `#` (the map position) and the query string.
 
 ## Licence
 

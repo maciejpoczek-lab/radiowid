@@ -148,6 +148,8 @@
   label.pasmo { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--przygaszony); }
   label.pasmo i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 </style>
+<!-- licznik odwiedzin: Umami na własnym serwerze (stats.zirael.pl), bez ciasteczek; bez części po # (pozycja mapy) i bez ?..., tylko na radio-wid.pl -->
+<script defer src="https://stats.zirael.pl/script.js" data-website-id="86c373de-029b-4acd-b771-338b8f530fae" data-domains="radio-wid.pl" data-exclude-hash="true" data-exclude-search="true"></script>
 </head>
 <body>
 <div class="app">
@@ -194,7 +196,7 @@
         (ulica 4 m → okolica 16 m → powiat 100 m, sam teren). Kierunki w punkcie liczą się zawsze na najdokładniejszych danych: tam, gdzie są budynki i drzewa (na razie wybrane kwadraty 20 × 20 km, m.in. okolice Garwolina) — kratka 4 m z nimi, gdzie indziej sam teren.
         Trójkąty = nadajniki radia i telewizji (z daleka widać najsilniejsze) i stacje komórkowe wokół punktu (kolor = droga fali).</p>
       <p class="maly">Radio i telewizja: natężenie pola wg ITU-R P.1546-6 z mocy nadajnika, wysokości masztu nad terenem i charakterystyki anteny; przy antenie poniżej 10 m poprawka z P.1546, w zabudowie z budynków i drzew. Progi w dBµV/m: FM ≥ 60 / granica 48; DAB+ ≥ 50 / 38; DVB-T ≥ 56 / 48 — przybliżenia, nie normy. Tylko polskie nadajniki (wykaz UKE). To nie pomiar.</p>
-      <p class="maly">Położenie, które oglądasz, wpisany adres i GPS nie wychodzą z telefonu: pobierane są całe pliki (paczki 20 km, teren w kwadratach 100 km, nadajniki całej Polski).</p>
+      <p class="maly">Położenie, które oglądasz, wpisany adres i GPS nie wychodzą z telefonu: pobierane są całe pliki (paczki 20 km, teren w kwadratach 100 km, nadajniki całej Polski). Licznik odwiedzin (Umami na serwerze autora, bez ciasteczek) dostaje tylko to, że strona została otwarta — z jakiej przeglądarki, rozmiar ekranu i kraj, bez pozycji mapy.</p>
     </details>
     <section class="grupa" id="dane" data-z="szczegoly">
       <h2>Dane i licencje</h2>
