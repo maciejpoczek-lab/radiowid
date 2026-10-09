@@ -226,12 +226,12 @@
 <script type="module">
 const KAWA = "https://buy.stripe.com/8x25kD9l6bfWeRf7oFbjW00";   // link do płatności Stripe (zwykły odnośnik, bez skryptu Stripe na stronie); LIVE od 2026-10-08; pusty = akapit ukryty
 const kawaKarta = () => KAWA ? `<a class="kawaKarta" href="${KAWA}" rel="noopener noreferrer" target="_blank"><svg class="ikKawa duza" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg><span><b>Pomogło? Postaw kawę</b><br><span class="maly">dobrowolny napiwek · BLIK lub karta</span></span></a>` : "";
-import { wczytajZestaw } from "../silnik/dane.js";
-import { POZIOMY, poziomWidoku, warstwyPoziomu, otworzPaczke, na2180 } from "../silnik/paczka.js";
-import { PROGI_RTV, PASMA_MHZ, ocena } from "../silnik/punkt.js";
-import { poprawkaOdbiornika } from "../silnik/p1546.js";
+import { wczytajZestaw } from "/silnik/dane.js";
+import { POZIOMY, poziomWidoku, warstwyPoziomu, otworzPaczke, na2180 } from "/silnik/paczka.js";
+import { PROGI_RTV, PASMA_MHZ, ocena } from "/silnik/punkt.js";
+import { poprawkaOdbiornika } from "/silnik/p1546.js";
 
-const PACZKI = "../dane/paczki/v1";
+const PACZKI = "/dane/paczki/v1";
 // paczki 4 m (budynki, drzewa): spis dane/paczki/v1/lista.json z przygotuj/paczki-na-strone.sh; bez spisu - dwie paczki Garwolina (krok 1)
 const SPIS_PACZEK = await fetch(`${PACZKI}/lista.json?h=${Math.floor(Date.now() / 3.6e6)}`)   /* serwer daje dane/paczki/v1 "immutable" na rok, a spis rośnie co rano: nowy adres co godzinę */.then((r) => r.json()).catch(() => ({ paczki: ["E660N440", "E680N440"] }));
 const BOK_PACZKI = 20000, LISTA_PACZEK = new Set(SPIS_PACZEK.paczki);
@@ -245,7 +245,7 @@ const paczkiPasa = (x0, y0, x1, y1) => {                  // EPSG:2180 -> [[e, n
   return o;
 };
 // krok 2 (docs §8): poziom powiat w całej Polsce z NMT 100 m kraju (kwadraty 100 km), nadajniki radia/TV całej Polski, cieniowanie kraju co 1 km
-const KRAJ100 = { ...POZIOMY[2], sufiks: "", bok: 100000 }, BAZA_KRAJ = "../dane/kraj/teren-100", POLSKA = { x0: 140000, y0: 100000, x1: 900000, y1: 800000 };
+const KRAJ100 = { ...POZIOMY[2], sufiks: "", bok: 100000 }, BAZA_KRAJ = "/dane/kraj/teren-100", POLSKA = { x0: 140000, y0: 100000, x1: 900000, y1: 800000 };
 const pamiec = new Map(), pamiecKraj = new Map();       // osobno: nazwy E600N400 bywają i paczką 20 km, i kwadratem 100 km
 const zrodlo = (p) => p.m === 100 ? [BAZA_KRAJ, KRAJ100, pamiecKraj] : [PACZKI, p, pamiec];
 const GRANICA_KM = 30;                                   // tak blisko granicy (albo morza) podpis: tylko polskie nadajniki
@@ -292,9 +292,9 @@ function rozpakujStacje(d) {             // zapis kolumnowy (przygotuj/stacje_kr
   return { ...d, stacje: d.stacje.map(([x, y, h, op, pa, adres]) => ({ x, y, ...(h == null ? {} : { h_ant: h }),
     operatorzy: op.map((k) => d.operatorzy[k]), pasma: pa.map((k) => d.pasma[k]), adres })) };
 }
-const [{ meta }, rtv, stacje, pk, t1000] = await Promise.all([wczytajZestaw("../dane/obszar-2880-2180-z"),
-  gz("../dane/kraj/nadajniki.json.gz"), gz("../dane/kraj/stacje.json.gz").then(rozpakujStacje), gz("../dane/kraj/podklad.json.gz"),
-  fetch("../dane/kraj/teren-1000.pak").then((r) => r.arrayBuffer())]);
+const [{ meta }, rtv, stacje, pk, t1000] = await Promise.all([wczytajZestaw("/dane/obszar-2880-2180-z"),
+  gz("/dane/kraj/nadajniki.json.gz"), gz("/dane/kraj/stacje.json.gz").then(rozpakujStacje), gz("/dane/kraj/podklad.json.gz"),
+  fetch("/dane/kraj/teren-1000.pak").then((r) => r.arrayBuffer())]);
 const U = meta.uklad;
 $("zrodla").textContent = "Źródła: " + meta.zrodla.join(" · ") + " · " + pk.zrodlo.join(" · ") + " · " + rtv.meta.zrodla.join(" · ") + ".";
 // najsilniejsze najpierw: przy oddaleniu rysowane są tylko te, którym nie wchodzi w drogę silniejszy sąsiad
@@ -302,7 +302,7 @@ const NADAJNIKI = rtv.meta.grupy.map((g) => ({ ...g, E: g.e, N: g.n, erp: Math.m
   .sort((a, b) => b.erp - a.erp);
 
 // --- wątki
-const W = Math.min(navigator.hardwareConcurrency || 4, 6), pula = Array.from({ length: W }, () => new Worker("./poziomy-praca.js", { type: "module" }));
+const W = Math.min(navigator.hardwareConcurrency || 4, 6), pula = Array.from({ length: W }, () => new Worker("/telefon/poziomy-praca.js", { type: "module" }));
 let licznik = 0;
 const zlec = (w, z) => new Promise((ok) => { const id = ++licznik, f = ({ data }) => { if (data.id === id) { w.removeEventListener("message", f); ok(data.blad ? null : data); } };
   w.addEventListener("message", f); w.postMessage({ ...z, id }); });
@@ -367,7 +367,7 @@ const KRAJ_MAPA = {
   drogi: [1, 2, 3].map((k) => warstwa(pk.drogi.filter((d) => d[0] === k).map((d) => d[2]), false, KX, KY, KW_KRAJ)),
   msc: pk.miejscowosci.map((m) => naMsc(m, KX, KY)).sort(wgRangi),
 };
-const Z_MAPA = new Set(pk.paczki_z_mapa), BAZA_MAPY = "../dane/paczki/v1", PROG_PACZEK = 36000, BOK_P = pk.paczka_bok_m;
+const Z_MAPA = new Set(pk.paczki_z_mapa), BAZA_MAPY = "/dane/paczki/v1", PROG_PACZEK = 36000, BOK_P = pk.paczka_bok_m;
 const MAPY = new Map(), ADR = new Map();                    // nazwa paczki -> {gotowa, dane} (Promise w .laduje)
 const paczkiProstokata = (x0, y0, x1, y1) => {             // układ strony -> nazwy paczek z podkładem
   const out = [];
@@ -491,7 +491,7 @@ function rysujPodklad(g) {
 // adresy: paczki 20 km miejscowości wymienionej w zapytaniu (albo paczka środka widoku) - serwer widzi tylko, które paczki.
 const bezOgonkow = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/g, "l");
 let SPIS = null, spisLaduje = null;
-const wczytajSpis = () => spisLaduje ??= gz("../dane/kraj/miejscowosci.json.gz").then((d) => {
+const wczytajSpis = () => spisLaduje ??= gz("/dane/kraj/miejscowosci.json.gz").then((d) => {
   SPIS = d.miejscowosci.map((m) => ({ ...naMsc(m, KX, KY), gmina: d.gminy[m[5]], powiat: d.powiaty[m[6]], paczki: m[7], klucz: bezOgonkow(m[0]) })).sort(wgRangi);
   return SPIS; });
 let znacznik = null;                                        // {x, y, tekst} w układzie strony

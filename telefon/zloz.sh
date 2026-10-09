@@ -27,33 +27,20 @@ for P in warszawa; do                                                       # in
   for f in budynki-wektor mapa-wektor; do cp "$M/dane/$f-$P.json.gz" "$C/dane/"; done
 done
 cp "$M"/ikony/* "$C/"                                                         # ikony i karta udostepniania (logo: ~/dev/RadioWid/logo) - w katalogu glownym strony
-# strona startowa: przekierowanie + ikony i znaczniki podgladu linku (roboty komunikatorow nie ida za przekierowaniem, czytaja TEN plik)
-cat > "$C/index.html" <<'HTML'
+# strona startowa = mapa (sciezki w poziomy.html bezwzgledne: /dane, /silnik, /telefon/poziomy-praca.js)
+cp "$M/telefon/poziomy.html" "$C/index.html"
+# stary adres /telefon/poziomy.html (rozeslane linki): przekierowanie na / z zachowaniem ?... i #pozycji (meta refresh gubi #)
+cat > "$C/telefon/poziomy.html" <<'HTML'
 <!doctype html>
 <html lang="pl">
 <head>
 <meta charset="utf-8">
 <title>RadioWid</title>
-<meta http-equiv="refresh" content="0; url=telefon/poziomy.html">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="/favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="/apple-touch-icon-180.png">
-<link rel="manifest" href="/site.webmanifest">
-<meta name="theme-color" content="#07090d">
-<meta name="description" content="Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych. Symulacja dla całej Polski.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="RadioWid">
-<meta property="og:title" content="RadioWid">
-<meta property="og:description" content="Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych.">
-<meta property="og:url" content="https://radio-wid.pl/">
-<meta property="og:image" content="https://radio-wid.pl/karta-udostepniania.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Znak RadioWid i hasło: Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych.">
-<meta property="og:locale" content="pl_PL">
-<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://radio-wid.pl/">
+<script>location.replace("/" + location.search + location.hash);</script>
+<noscript><meta http-equiv="refresh" content="0; url=/"></noscript>
 </head>
-<body style="background:#07090d"><a href="telefon/poziomy.html" style="color:#9fd0ff">RadioWid</a></body>
+<body style="background:#07090d"><a href="/" style="color:#9fd0ff">RadioWid</a></body>
 </html>
 HTML
 if grep -rqiE "fala\.py|fala\.npz|weryfikacja" "$C"; then echo "BLAD: w kopii jest odwolanie do danych weryfikacji" >&2; exit 1; fi
