@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Samoczynny pomiar sieci na telefonie (Termux + Termux:API) do kalibracji: weryfikacja/kalibracja.mjs.
 # Uruchamiany przez Androida co 15 min (termux-job-scheduler, przetrwa restart telefonu):
-#  - do 40 s próby GPS; brak świeżej poprawki <= 25 m = telefon w budynku albo w kieszeni bez nieba -> nic nie zapisuje
+#  - do 40 s prób GPS (kolejne żądania "-r once" po 10 s); brak świeżej poprawki <= 25 m = telefon w budynku albo w kieszeni bez nieba -> nic nie zapisuje
 #    (to zarazem odsiewa pomiary zza ścian), GPS gaszony, telefon zasypia;
 #  - jest poprawka -> zapis co 5 s (na postoju co 60 s), dopóki poprawka świeża, najwyżej ok. 9 min na jedno uruchomienie.
 # Pliki dzienne Documents/RadioWid/auto_<data>.jsonl (format jak telefon-pomiar.sh). Gdy najstarszy nieodebrany plik ma
@@ -22,14 +22,20 @@ if [ -n "$(find "$D" -maxdepth 1 -name 'auto_*.jsonl' -mtime +6 | head -1)" ]; t
 fi
 
 termux-wake-lock
-termux-location -p gps -r updates -d 1000 > /dev/null 2>&1 &
-GPS=$!
-koniec() { pkill -P "$GPS" 2>/dev/null; kill "$GPS" 2>/dev/null; termux-wake-unlock; rmdir "$BLOKADA" 2>/dev/null; }
+TMP="$HOME/.pomiar-auto.loc"
+koniec() { pkill -f 'termux-location' 2>/dev/null; termux-wake-unlock; rm -f "$TMP"; rmdir "$BLOKADA" 2>/dev/null; }
 trap 'koniec; exit 0' INT TERM EXIT
 
-# odczyt świeżej poprawki: LOC = surowy JSON, P = "lat lon dokl wiek_ms" albo pusto (bez podpowłoki - LOC idzie do zapisu)
+# odczyt świeżej poprawki: LOC = surowy JSON, P = "lat lon dokl wiek_ms" albo pusto (bez podpowłoki - LOC idzie do zapisu).
+# Każdy krok to nowe żądanie "-r once": aplikacja w tle dostaje od Androida (prawdopodobnie - ograniczanie lokalizacji w tle,
+# niezmierzone) tylko pierwszą poprawkę z ciągłego "-r updates"
+# (2026-10-09: 29 uruchomień, jedna poprawka, potem "-r last" stało w miejscu). "-r once" bez nieba wisi - stąd limit 10 s.
 poprawka() {
-  LOC=$(termux-location -p gps -r last 2>/dev/null | tr -d '\n')
+  : > "$TMP"; termux-location -p gps -r once > "$TMP" 2>/dev/null &
+  local j=$! i=0
+  while [ "$i" -lt 10 ] && kill -0 "$j" 2>/dev/null; do sleep 1; i=$((i + 1)); done
+  kill -0 "$j" 2>/dev/null && { pkill -P "$j" 2>/dev/null; kill "$j" 2>/dev/null; }
+  LOC=$(tr -d '\n' < "$TMP")
   P=$(printf '%s' "$LOC" | awk '{
     if (match($0, /"latitude": *[-0-9.]+/)) lat = substr($0, RSTART, RLENGTH); sub(/.*: */, "", lat)
     if (match($0, /"longitude": *[-0-9.]+/)) lon = substr($0, RSTART, RLENGTH); sub(/.*: */, "", lon)
@@ -39,13 +45,13 @@ poprawka() {
 }
 
 START=$(date +%s); P=""
-while [ $(( $(date +%s) - START )) -lt 40 ]; do poprawka; [ -n "$P" ] && break; sleep 5; done
+while [ $(( $(date +%s) - START )) -lt 40 ]; do poprawka; [ -n "$P" ] && break; done
 if [ -z "$P" ]; then log "brak poprawki GPS - pomijam"; exit 0; fi
 
 F="$D/auto_$(date +%Y-%m-%d).jsonl"; N=0; STALE=0; OST_LAT=""; OST_LON=""; OST_T=0
 while [ $(( $(date +%s) - START )) -lt 540 ]; do
   poprawka
-  if [ -z "$P" ]; then STALE=$((STALE + 1)); [ "$STALE" -ge 3 ] && break; sleep 5; continue; fi
+  if [ -z "$P" ]; then STALE=$((STALE + 1)); [ "$STALE" -ge 3 ] && break; continue; fi
   STALE=0; set -- $P; TERAZ=$(date +%s)
   # postój: < 20 m od ostatniego zapisu i < 60 s -> pomiń krok
   if [ -n "$OST_LAT" ]; then
