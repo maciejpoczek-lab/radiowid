@@ -5,7 +5,7 @@
 // Uzycie: node weryfikacja/p1546.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { poleKrzywe, poprawkaOdbiornika, poprawkaKataPrzeswitu } from "../silnik/p1546.js";
+import { poleKrzywe, poprawkaOdbiornika, poprawkaKataPrzeswitu, poleKroki } from "../silnik/p1546.js";
 const D = `${homedir()}/dev/showreel-2/dane/itu-p1546/p1/`, K = D + readdirSync(D).find((n) => n.startsWith("Matlab")) + "/validation_results/";
 let n = 0, nh = 0, maks = 0, maksH = 0, pominiete = 0;
 for (const plik of readdirSync(K).filter((p) => p.endsWith("_log.csv"))) {
@@ -35,3 +35,20 @@ for (const cz of ["p1", "p2"]) {
   }
 }
 console.log(`kąt prześwitu (§11): ${nt} przypadków, największa różnica ${maksT.toFixed(4)} dB`);
+
+// §14-15 (kroki 16-17): drogi lądowe 50% czasu krótsze niż 1 km - pole z krzywych na 1 km + poprawki z dziennika (h2, tca,
+// zasłona nadajnika), różnica wysokości anten odtworzona z zapisanej poprawki skośnej na 1 km (20 log(1/d_skośna)).
+let nk = 0, maksK = 0;
+for (const cz of ["p1", "p2"]) {
+  const R = `${homedir()}/dev/showreel-2/dane/itu-p1546/${cz}/`, KK = R + readdirSync(R).find((n) => /P\.1546/.test(n)) + "/validation_results/";
+  for (const plik of readdirSync(KK).filter((p) => p.endsWith("_log.csv"))) {
+    const w = {}; for (const l of readFileSync(KK + plik, "utf8").split("\n")) { const c = l.split(","); if (c.length >= 4) w[c[0].trim()] ??= c[3].trim(); }
+    const d = +w["Horizontal path length d (km)"], f = +w["Frequency f (MHz)"], h1 = +w["Tx antenna height h1 (m)"], E = +w["Field strength for d < 1 km (dB)"];
+    if (!(d < 1) || +w["Percentage time t (%)"] !== 50 || +w["Sea path (km)"] > 0 || !Number.isFinite(E)) continue;
+    const kor = (k) => +w[k] || 0, ds1 = 10 ** (-kor("Rx slope-path correction (dB)") / 20), dz = Math.sqrt((ds1 * ds1 - 1) / 1e-6);
+    const popr = kor("TCA correction (dB)") + kor("Rx antenna height correction (dB)") + kor("Tx clutter correction (dB)");
+    const r = poleKroki(d, h1, f, popr, dz) - E; maksK = Math.max(maksK, Math.abs(r)); nk++;
+    if (Math.abs(r) > 0.01) console.log("ROZNICA d<1km", cz, plik, { d, f, ITU: E, my: +(E + r).toFixed(4) });
+  }
+}
+console.log(`d < 1 km (§15): ${nk} przypadków, największa różnica ${maksK.toFixed(4)} dB`);

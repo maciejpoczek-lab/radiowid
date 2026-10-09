@@ -1,8 +1,8 @@
 // ITU-R P.1546-6 — natężenie pola nadajnika radia/TV w ograniczeniu do tego, czego potrzebuje mapa:
 // droga lądowa, 50% czasu, 50% miejsc, 1 kW e.r.p., odbiór na wysokości odniesienia 10 m (krzywe), plus poprawka
 // anteny odbiorczej z §9. Przeniesione z implementacji wzorcowej ITU-R SG3 (P1546FieldStrMixed.m v6.2): kroki 7–9
-// (interpolacja po odległości, wysokości nadajnika h1 i częstotliwości), §3 (h1), §9 (Step_14a). Pominięte: drogi
-// morskie i mieszane, d < 1 km, rozpraszanie troposferyczne (§13), zmienność miejsc (§12). Poprawka kąta prześwitu
+// (interpolacja po odległości, wysokości nadajnika h1 i częstotliwości), §3 (h1), §9 (Step_14a), §14-15 (kroki 16-17). Pominięte: drogi
+// morskie i mieszane, rozpraszanie troposferyczne (§13), zmienność miejsc (§12). Poprawka kąta prześwitu
 // terenu przy odbiorniku (§11, krok 12) - poprawkaKataPrzeswitu; kąt liczy wywołujący (silnik/punkt.js, katPrzeswitu).
 // Sprawdzenie zgodności z przykładami ITU: weryfikacja/p1546.mjs.
 import T from "./p1546-tabele.js";
@@ -37,7 +37,7 @@ function naCzestotliwosciNominalnej(fn, h1, d) {
 
 // Pole z krzywych [dBµV/m] dla 1 kW e.r.p. przy odbiorze na 10 m: d [km], h1 [m] (§3), f [MHz]; równ. (14)
 export function poleKrzywe(d, h1, f) {
-  d = Math.max(d, 1);                               // P.1546-5+: dla d < 1 km krzywe na 1 km (krok 17 pominięty)
+  d = Math.max(d, 1);                               // dla d < 1 km krzywe na 1 km, dalej §15 w poleKroki
   const [a, b] = sasiednie(FREQ, f);
   const Ea = naCzestotliwosciNominalnej(FREQ[a], h1, d);
   return a === b ? Ea : logInterp(f, FREQ[a], FREQ[b], Ea, naCzestotliwosciNominalnej(FREQ[b], h1, d));
@@ -75,8 +75,25 @@ export function poprawkaKataPrzeswitu(f, tca) {
   return Jnu(0.036 * Math.sqrt(f)) - Jnu(0.065 * t * Math.sqrt(f));
 }
 
+// §14 (równ. 37a, Step_16a/dslope wzorca): odległość skośna [km]; dz - różnica wysokości anten n.p.m. (nadajnik - odbiornik) [m]
+export const odlSkosna = (d, dz) => Math.sqrt(d * d + 1e-6 * dz * dz);
+// Pole dla 1 kW e.r.p. [dBµV/m] w kolejności kroków wzorca (P1546FieldStrMixed.m): krzywe na max(d, 1 km) + poprawki
+// odbiornika (§9) i kąta prześwitu (§11) [dB] -> krok 16: poprawka różnicy wysokości 20 log(d / d_skośna) (§14, na 1 km,
+// gdy d < 1) -> krok 17: d < 1 km (§15) - do 40 m wolna przestrzeń po odległości skośnej, między 40 m a 1 km interpolacja
+// w log odległości skośnej od niej do pola na 1 km (zalecenie: krótsza droga coraz częściej omija przeszkody) -> krok 19:
+// nie więcej niż wolna przestrzeń po odległości skośnej. Nie ma tu pionowej charakterystyki anteny nadawczej.
+export function poleKroki(d, h1, f, poprawkiDb, dz) {
+  const d1 = Math.max(d, 1);
+  let E = poleKrzywe(d1, h1, f) + poprawkiDb + 20 * Math.log10(d1 / odlSkosna(d1, dz));
+  if (d < 1) {
+    const ds = odlSkosna(d, dz), dinf = odlSkosna(0.04, dz), Einf = Emax(dinf);
+    E = d <= 0.04 ? Emax(ds) : Einf + (E - Einf) * Math.log10(ds / dinf) / Math.log10(odlSkosna(1, dz) / dinf);
+  }
+  return Math.min(E, Emax(odlSkosna(Math.max(d, 1e-6), dz)));
+}
+
 // Gotowe pole w punkcie [dBµV/m]: e.r.p. [kW], d [km], h1 [m], f [MHz], h2 [m], zasłona miejska [dB], tłumienie anteny nadawczej [dB]
-export function pole1546(erpKw, d, h1, f, h2, zaslonaDb, tlumAnteny = 0) {
-  const E = poleKrzywe(d, h1, f) + poprawkaOdbiornika(h2, f, zaslonaDb);
-  return Math.min(E, Emax(Math.max(d, 1e-3))) + 10 * Math.log10(erpKw) - tlumAnteny;
+// dz - różnica wysokości anten n.p.m. [m]; 0 = anteny na tej samej wysokości (§14 bez skutku)
+export function pole1546(erpKw, d, h1, f, h2, zaslonaDb, tlumAnteny = 0, dz = 0) {
+  return poleKroki(d, h1, f, poprawkaOdbiornika(h2, f, zaslonaDb), dz) + 10 * Math.log10(erpKw) - tlumAnteny;
 }

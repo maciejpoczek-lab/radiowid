@@ -4,7 +4,7 @@
 // Położenie punktu nie opuszcza wywołującego (liczone lokalnie). Każdy wynik to SYMULACJA, nie pomiar.
 import { geometriaLaczona, stratyLaczone } from "./laczony.js";
 import { J, C_MHZ } from "./silnik.js";
-import { poleKrzywe, wysokoscH1, heffKierunku, poprawkaOdbiornika, poprawkaKataPrzeswitu } from "./p1546.js";
+import { poleKroki, wysokoscH1, heffKierunku, poprawkaOdbiornika, poprawkaKataPrzeswitu } from "./p1546.js";
 
 // Środek pasma w kierunku stacja -> telefon [MHz] (downlink); nazwy jak w plikach UKE
 export const PASMA_MHZ = {
@@ -62,7 +62,8 @@ export function widokZPunktu(punkt, stacje, scena, { hRx = 1.5, gruntPunktu } = 
 
 // --- radio i TV: „odbiór / granica / nie” ---
 // Natężenie pola [dBµV/m] wg ITU-R P.1546-6 (silnik/p1546.js): krzywa dla 1 kW e.r.p. (ląd, 50% czasu i miejsc, odbiór
-// na 10 m; h1 z wysokości efektywnej masztu, liczonej w przygotuj/fm.mjs) + 10 log ERP[kW] - tłumienie charakterystyki
+// na 10 m; h1 z wysokości efektywnej masztu, liczonej w przygotuj/fm.mjs; różnica wysokości anten §14 i odległość poniżej
+// 1 km §15 - poleKroki) + 10 log ERP[kW] - tłumienie charakterystyki
 // anteny nadawczej + poprawka anteny odbiorczej (§9): na otwartym terenie spadek z obniżeniem anteny poniżej 10 m,
 // w zabudowie 6,03 - J krawędzi z prawdziwych budynków i koron między punktem a nadajnikiem (odcinek w mieście).
 // Krzywe P.1546 uśredniają teren po drodze, więc odcinek daleki (daleko.bin) nie jest tu już używany; teren przy odbiorniku
@@ -92,6 +93,20 @@ export function katPrzeswitu(wysokosc, x, y, z0, tx, ty, tz, R_E = 8.5e6) {
   for (let s = 100; s < smax; s += Math.max(100, 0.05 * s)) t = Math.max(t, (wysokosc(x + ux * s, y + uy * s) - z0) / s);
   return (Math.atan(t) - kT) * 180 / Math.PI;
 }
+// Pionowa charakterystyka anteny nadawczej radia/TV - potrzebna, bo P.1546 §15 daje pole dla 1 kW e.r.p. „w kierunku
+// promieniowania” i wprost NIE uwzględnia pionowego snopa (stroma droga pod masztem). Rejestr UKE podaje tylko poziomą.
+// Wzór wzorcowy ITU-R F.1336-5, zalecenie 2.2 (antena dookólna w azymucie, listki boczne uśrednione - do oceny pokrycia),
+// k = 0,7 (zal. 2.3, „typowe anteny”), pochylenie elektryczne wg zal. 2.5 (równ. 1e). ZAŁOŻONE typowe, nie z rejestru:
+// szerokość snopa w pionie 10° (F.1336 równ. 1b: zysk ok. 10 dBi, jak stos kilku pięter paneli, ITU-R BS.1195 §6-7)
+// i pochylenie 1° w dół (BS.1195 §7.1.2: małe pochylenia 1-3°, przy 300 m nad ziemią więcej niż 0,5°).
+// Skutek: przy horyzoncie (droga daleka, krzywe P.1546) ok. 0,1 dB; pod masztem do ok. 16,3 dB (dno wzoru
+// przy 90°: 15 - 10 log((90/10)^-1,5 + 0,7)). F.1336 jest dla 400 MHz - 70 GHz; dla FM i DAB+ (pasmo II-III) to przeniesienie kształtu.
+export const SNOP_RTV = { szerokosc: 10, pochylenie: 1, k: 0.7 };
+export function tlumieniePionoweRtv(dz, dM, { szerokosc: t3, pochylenie: b, k } = SNOP_RTV) {   // dz = antena - odbiornik [m]
+  const th = -Math.atan2(dz, dM) * 180 / Math.PI, e = th + b >= 0 ? 90 * (th + b) / (90 + b) : 90 * (th + b) / (90 - b);
+  const x = Math.abs(e), t5 = t3 * Math.sqrt(1.25 - Math.log10(k + 1) / 1.2);
+  return x < t3 ? 12 * (x / t3) ** 2 : x < t5 ? 15 - 10 * Math.log10(k + 1) : 15 - 10 * Math.log10((x / t3) ** -1.5 + k);
+}
 function tlumienieAnteny(tl, az) {                    // tl: 36 wartości co 10° [dB]; interpolacja liniowa
   if (!tl || !tl.length) return 0;
   const a = (az % 360 + 360) % 360 / 10, i = Math.floor(a) % 36, f = a - Math.floor(a);
@@ -111,13 +126,13 @@ export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu, otoczenie 
     const azOdNadajnika = (Math.atan2(punkt.x - g.x, punkt.y - g.y) * 180 / Math.PI + 360) % 360;   // w siatce ukladu mapy
     const dkm = Math.hypot(g.x - punkt.x, g.y - punkt.y) / 1000, h1 = wysokoscH1(dkm, heffKierunku(g.heff, g.hant, azOdNadajnika), g.hant);
     const azGeo = (azOdNadajnika + (g.zbieznosc ?? 0) + 360) % 360;   // charakterystyka anteny UKE: azymut geograficzny (uklad 2180: + zbieznosc w nadajniku)
-    const tca = teren ? katPrzeswitu(teren.wysokosc, punkt.x, punkt.y, zt, g.x, g.y, g.z, R_E) : -90;
+    const tca = teren ? katPrzeswitu(teren.wysokosc, punkt.x, punkt.y, zt, g.x, g.y, g.z, R_E) : -90, pion = tlumieniePionoweRtv(g.z - z0, dkm * 1000);
     for (const p of g.programy) {
       const zaslona = J(umax / Math.sqrt(C_MHZ / p.mhz)), popr = poprawkaOdbiornika(hRx, p.mhz, zaslona);
       const pt = teren ? poprawkaKataPrzeswitu(p.mhz, tca) : 0;
-      const E = Math.min(poleKrzywe(dkm, h1, p.mhz) + popr, 106.9 - 20 * Math.log10(dkm)) + pt + 10 * Math.log10(p.erp_kw) - tlumienieAnteny(p.tlumienie_db, azGeo);
+      const E = poleKroki(dkm, h1, p.mhz, popr + pt, g.z - z0) + 10 * Math.log10(p.erp_kw) - tlumienieAnteny(p.tlumienie_db, azGeo) - pion;
       wynik.push({ ...p, typ: p.typ ?? "fm", gi, km: dkm, azymut: Math.round((azOdNadajnika + 180) % 360), hant: g.hant, h1: Math.round(h1),
-        tca: Math.round(tca * 100) / 100, teren_db: Math.round(-pt * 10) / 10,
+        tca: Math.round(tca * 100) / 100, teren_db: Math.round(-pt * 10) / 10, snop_db: Math.round(pion * 10) / 10,
         E_dBuVm: Math.round(E * 10) / 10, zaslona_db: Math.round(-popr * 10) / 10, krawedz: zaslona > 0 && 6.03 - zaslona < popr + 1e-9 ? "zabudowa" : "antena nisko",
         ocena: ((pr) => E >= pr.slychac ? "slychac" : E >= pr.granica ? "granica" : "nie")(progiRtv(p.typ ?? "fm", otoczenie)) });
     }
@@ -139,12 +154,12 @@ export function poleNaSiatce(odb, fm, gi, typ, scena, hRx, program = null) {
     for (let j = 0; j < nx; j++) {
       const x = odb.xs[j], q = i * nx + j, umax = blisko ? blisko[q] : -Infinity;
       const azS = Math.atan2(x - g.x, y - g.y) * 180 / Math.PI, az = (azS + 360 + (g.zbieznosc ?? 0)) % 360;   // geograficzny (2180: + zbieznosc)
-      const dkm = Math.hypot(g.x - x, g.y - y) / 1000, h1 = wysokoscH1(dkm, heffKierunku(g.heff, g.hant, azS), g.hant), Emx = 106.9 - 20 * Math.log10(dkm);
-      const tca = teren ? katPrzeswitu(teren.wysokosc, x, y, teren.wysokosc(x, y) + hRx, g.x, g.y, g.z, R_E) : -90;
+      const dkm = Math.hypot(g.x - x, g.y - y) / 1000, h1 = wysokoscH1(dkm, heffKierunku(g.heff, g.hant, azS), g.hant), dz = g.z - odb.Z[q];
+      const tca = teren ? katPrzeswitu(teren.wysokosc, x, y, teren.wysokosc(x, y) + hRx, g.x, g.y, g.z, R_E) : -90, pion = tlumieniePionoweRtv(dz, dkm * 1000);
       let best = -Infinity;
       for (const p of programy) {
-        const e = Math.min(poleKrzywe(dkm, h1, p.mhz) + poprawkaOdbiornika(hRx, p.mhz, J(umax / Math.sqrt(C_MHZ / p.mhz))), Emx)
-                  + (teren ? poprawkaKataPrzeswitu(p.mhz, tca) : 0) + 10 * Math.log10(p.erp_kw) - tlumienieAnteny(p.tlumienie_db, az);
+        const e = poleKroki(dkm, h1, p.mhz, poprawkaOdbiornika(hRx, p.mhz, J(umax / Math.sqrt(C_MHZ / p.mhz))) + (teren ? poprawkaKataPrzeswitu(p.mhz, tca) : 0), dz)
+                  + 10 * Math.log10(p.erp_kw) - tlumienieAnteny(p.tlumienie_db, az) - pion;
         if (e > best) best = e;
       }
       E[q] = best;

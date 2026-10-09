@@ -128,8 +128,8 @@ async function obsluz(z) {
     const fm = [], reszta = { fm: 0, dab: 0, dvbt: 0 };
     for (const p of fmZPunktu(z.P, baza.fm, scn, op)) {
       if (p.E_dBuVm < progiRtv(p.typ, otoczenie).granica - 20) { reszta[p.typ]++; continue; }
-      const { typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena } = p;
-      fm.push({ typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena });
+      const { typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena, snop_db } = p;
+      fm.push({ typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena, snop_db });
     }
     let dach = null;                                    // wysokość budynku nad gruntem w kratce 4 m (0 poza budynkami) - dach w punkcie i punkt orientacyjny
     if (s?.BUD) { const H = new Float32Array(s.nx * s.ny); for (let k = 0; k < H.length; k++) H[k] = s.BUD[k] ? s.O[k] - s.G[k] : 0;

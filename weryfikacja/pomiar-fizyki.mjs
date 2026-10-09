@@ -77,6 +77,23 @@ for (const [nazwa, lat, lon] of PUNKTY) {
   }
   wynik.cien_pod_masztem = { adres: s.adres, h_ant: s.h_ant ?? null, punkty: cien };
 }
+// pod masztem radia/TV: najmocniejszy program FM z danej stacji w odległościach 20 m - 5 km od niej (4 kierunki, mediana)
+for (const [nazwa, wzor, P0] of [["PKiN", /PKiN/, wynik["Warszawa, pl. Defilad"].P], ["Gubałówka", /Guba/, wynik["Zakopane, Krupówki (granica)"].P]]) {
+  const g0 = (await zlec({ typ: "punkt", P: P0, hRx: 1.5, stacje: [] })).fm.find((p) => p.typ === "fm" && wzor.test(p.stacja));
+  const az0 = g0.azymut * Math.PI / 180, S = { x: P0.x + g0.km * 1000 * Math.sin(az0), y: P0.y + g0.km * 1000 * Math.cos(az0) }, wiersze = [];
+  console.log(`\npod masztem ${nazwa}: ${g0.stacja}, ${g0.program}`);
+  for (const d of [20, 100, 300, 600, 1000, 1700, 3000, 5000]) {
+    const r = [];
+    for (const az of [0, 90, 180, 270]) {
+      const a = az * Math.PI / 180, w = await zlec({ typ: "punkt", P: { x: S.x + d * Math.sin(a), y: S.y + d * Math.cos(a) }, hRx: 1.5, stacje: [] });
+      const p = w.fm.find((p) => p.typ === "fm" && p.program === g0.program && wzor.test(p.stacja)); if (p) r.push(p);
+    }
+    r.sort((a, b) => a.E_dBuVm - b.E_dBuVm); const m = r[Math.floor(r.length / 2)];
+    wiersze.push({ d, E: m?.E_dBuVm, snop: m?.snop_db, zaslona: m?.zaslona_db });
+    console.log(`  ${String(d).padStart(5)} m: E ${m?.E_dBuVm} dBµV/m  snop ${m?.snop_db ?? "-"}  zasłona ${m?.zaslona_db}`);
+  }
+  (wynik.pod_masztem_rtv ??= {})[nazwa] = { stacja: g0.stacja, program: g0.program, punkty: wiersze };
+}
 // mapa widoku (jak telefon/poziomy.html, przelicz): scena poziomu, 360 × 360 punktów, radio FM - 3 grupy najmocniejsze
 // w środku, komórki - 6 najbliższych stacji; czas liczenia i ile punktów ponad progi
 const { PROGI_RTV, progiRtv } = await import("../silnik/punkt.js"), { POZIOMY, poziomWidoku } = await import("../silnik/paczka.js");
