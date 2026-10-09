@@ -1,4 +1,6 @@
 #!/bin/bash
+# WYCOFANE 2026-10-09: paczki wysyla sam komputer z kolejka (przygotuj/paczki-wyslij.sh, cron co 20 min); LaunchAgent na Macu wylaczony.
+# Zostaje do recznego uzycia w awarii - uwaga: wgrywa spis z kopii na Macu, ktora moze byc starsza od serwera.
 # Co rano (LaunchAgent wg przygotuj/radiowid-paczki.plist, 07:45): paczki policzone w nocy -> strona. Ustawienia: przygotuj/ustawienia.sh.
 # Wgrywa WYLACZNIE dane paczek (E...N....pak, -16, -100, -budynki.json.gz, na koncu lista.json) - nigdy strony: zmiana
 # poziomy.html w toku innej sesji nie moze wyjsc na serwer bez zgody. Bez --delete. Nowych paczek brak -> nic nie wysyla.

@@ -19,8 +19,9 @@ All heavy lifting happens in two places:
 | `telefon/poziomy.html` | The page served at radio-wid.pl. Zoom levels by grid size: 4 m (buildings and trees), 16 m, 100 m (terrain only), 1 km (country). |
 | `przygotuj/` | Data pipeline (Python + numpy, no GDAL). Open data → 20 × 20 km packs on a national grid (EPSG:2180) → `.pak` files. |
 | `przygotuj/kolejka_paczek.py` | Night queue on a compute host: download sheets → buildings → pack → delete raw tiles. One pack takes about 18 min, mostly downloading. |
-| `przygotuj/paczki-na-strone.sh`, `paczki-rano.sh` | Pull finished packs, build zoom levels and building outlines, publish data (never the page) every morning. Hosts are set in `przygotuj/ustawienia.sh`. |
-| `telefon/zloz.sh` | Assembles the static site into `_telefon/`. |
+| `przygotuj/paczki-wyslij.sh` | Runs on the compute host every 20 min: builds zoom levels and building outlines for new packs and uploads them straight to the web server. Its SSH key there is write-only and limited to the packs directory (`rrsync -wo -no-del`). |
+| `przygotuj/paczki-na-strone.sh` | Pulls finished packs to a local copy for testing the site locally. Hosts are set in `przygotuj/ustawienia.sh`. |
+| `telefon/zloz.sh`, `telefon/wgraj.sh` | Assemble the static site into `_telefon/` and upload it. The upload never touches `dane/paczki/`, which the compute host owns. |
 | `weryfikacja/` | Bit-exact checks of the JS engine against the Python reference models. Those models are not in this repo, so these checks only run on the author's machine. |
 | `docs/` | Design notes (Polish): pack layout, sizes, zoom levels, privacy. |
 
