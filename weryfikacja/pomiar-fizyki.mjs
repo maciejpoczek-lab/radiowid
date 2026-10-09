@@ -50,8 +50,8 @@ for (const [nazwa, lat, lon] of PUNKTY) {
   for (const s of st) for (const r of Object.values(s.pasma)) zasieg[r.zapas >= 15 ? "mocny" : r.zapas >= 0 ? "slaby" : "poza"]++;
   const rtv = w.fm.map((p) => ({ typ: p.typ, program: p.program, stacja: p.stacja, km: +p.km.toFixed(1), E: p.E_dBuVm, ocena: p.ocena }));
   const ile = (t, o) => rtv.filter((p) => p.typ === t && p.ocena === o).length;
-  wynik[nazwa] = { P: { x: Math.round(P.x), y: Math.round(P.y) }, scena: w.scena, ms: Math.round(ms), stacje: st, rtv };
-  console.log(`\n${nazwa}  (${Math.round(P.x)}, ${Math.round(P.y)})  scena ${w.scena}, ${Math.round(ms)} ms, ${st.length} stacji`);
+  wynik[nazwa] = { P: { x: Math.round(P.x), y: Math.round(P.y) }, scena: w.scena, otoczenie: w.otoczenie, ms: Math.round(ms), stacje: st, rtv };
+  console.log(`\n${nazwa}  (${Math.round(P.x)}, ${Math.round(P.y)})  scena ${w.scena}, otoczenie ${w.otoczenie ?? "-"}, ${Math.round(ms)} ms, ${st.length} stacji`);
   console.log(`  komórki, pary stacja×pasmo: mocny ${zasieg.mocny} · słaby ${zasieg.slaby} · poza ${zasieg.poza}`);
   for (const s of st.slice(0, 5)) console.log(`  ${s.ocena.padEnd(10)} ${String(s.km).padStart(5)} km  krawędź ${String(s.krawedz_m ?? "-").padStart(5)} m  ` +
     Object.entries(s.pasma).slice(0, 4).map(([p, r]) => `${p} nad ${r.nad} zapas ${r.zapas}`).join(" | "));
@@ -60,23 +60,27 @@ for (const [nazwa, lat, lon] of PUNKTY) {
 }
 // mapa widoku (jak telefon/poziomy.html, przelicz): scena poziomu, 360 × 360 punktów, radio FM - 3 grupy najmocniejsze
 // w środku, komórki - 6 najbliższych stacji; czas liczenia i ile punktów ponad progi
-const { PROGI_RTV } = await import("../silnik/punkt.js"), { POZIOMY, poziomWidoku } = await import("../silnik/paczka.js");
+const { PROGI_RTV, progiRtv } = await import("../silnik/punkt.js"), { POZIOMY, poziomWidoku } = await import("../silnik/paczka.js");
 for (const [nazwa, bok] of [["Garwolin, rynek", 5760], ["Nowy Sącz, dolina Dunajca", 36000]]) {
   const P = wynik[nazwa].P, E = P.x + E0, N = P.y + N0, pw = poziomWidoku(bok, 360), m = pw.poziom.m, krok = Math.max(m, Math.round(bok / 360)), n = Math.ceil(bok / krok);
   const x0 = Math.floor((E - n * krok / 2) / m) * m, y1 = Math.ceil((N + n * krok / 2) / m) * m, mar = Math.max(1000, 0.25 * n * krok);
   const sx0 = Math.floor((x0 - mar) / m) * m, sy1 = Math.ceil((y1 + mar) / m) * m, sn = Math.ceil((n * krok + 2 * mar) / m), f = Math.ceil(sn / 1600);
   let t = performance.now(); await zlec({ typ: "scena", poziom: m, x0: sx0, y1: sy1, nx: sn, ny: sn, f }); const tScena = performance.now() - t;
   const siatka = { x0: x0 - E0, y1: y1 - N0, n, krok }, gr = (await zlec({ typ: "grupy", P, hRx: 1.5, rodzaj: "fm" })).grupy.slice(0, 3);
-  t = performance.now(); const pola = []; for (const gi of gr) pola.push((await zlec({ typ: "pole", siatka, hRx: 1.5, gi, rodzaj: "fm" })).E); const tPole = performance.now() - t;
+  t = performance.now(); const pola = []; let K = null;
+  for (const gi of gr) { const r = await zlec({ typ: "pole", siatka, hRx: 1.5, gi, rodzaj: "fm" }); pola.push(r.E); K ??= r.K; } const tPole = performance.now() - t;
   const naj = new Float32Array(n * n).fill(-Infinity); for (const a of pola) for (let k = 0; k < a.length; k++) naj[k] = Math.max(naj[k], a[k]);
   const p = PROGI_RTV.fm, ponad = (v) => [...naj].filter((e) => e >= v).length;
+  // progi otoczenia punktu (BS.412) - dobry/granica wg klasy każdego punktu
+  const wgOt = (klucz) => naj.reduce((c, e, k) => c + (e >= progiRtv("fm", K?.[k])[klucz] ? 1 : 0), 0), ot = [0, 1, 2].map((c) => K ? K.filter((v) => v === c).length : 0);
   const st = stacje.filter((s) => Math.hypot(s.x - P.x, s.y - P.y) <= 10000).sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y)).slice(0, 6);
   t = performance.now(); let zas = 0;
   for (const s of st) { const L = (await zlec({ typ: "swiatlo", siatka, hRx: 1.5, S: { x: s.x, y: s.y, h: s.h_ant ?? 35 }, f: [1842] })).L[0]; for (const v of L) if (v <= 135) zas++; }
   const tSw = performance.now() - t;
   wynik[nazwa].mapa = { poziom: m, n, krok, ms_scena: Math.round(tScena), ms_pole3: Math.round(tPole), ms_swiatlo6: Math.round(tSw),
-    fm_slychac: ponad(p.slychac), fm_granica: ponad(p.granica), lte1800_w_zasiegu: zas };
+    fm_slychac: ponad(p.slychac), fm_granica: ponad(p.granica), fm_dobry_otoczenie: wgOt("slychac"), fm_granica_otoczenie: wgOt("granica"), otoczenie: ot, lte1800_w_zasiegu: zas };
   console.log(`\nmapa ${nazwa}: ${pw.poziom.nazwa} ${m} m, ${n} × ${n} co ${krok} m · scena ${Math.round(tScena)} ms · FM 3 grupy ${Math.round(tPole)} ms · ` +
-    `komórki 6 stacji ${Math.round(tSw)} ms\n  FM punktów ≥ ${p.slychac}: ${ponad(p.slychac)}, ≥ ${p.granica}: ${ponad(p.granica)} z ${n * n}; 1800 MHz par punkt×stacja w zasięgu: ${zas}`);
+    `komórki 6 stacji ${Math.round(tSw)} ms\n  FM punktów ≥ ${p.slychac}: ${ponad(p.slychac)}, ≥ ${p.granica}: ${ponad(p.granica)} z ${n * n}; 1800 MHz par punkt×stacja w zasięgu: ${zas}` +
+    `\n  FM wg otoczenia (wieś/miasto/duże ${ot.join("/")}): dobry ${wgOt("slychac")}, co najmniej granica ${wgOt("granica")}`);
 }
 if (process.argv[2]) writeFileSync(process.argv[2], JSON.stringify(wynik, null, 1));

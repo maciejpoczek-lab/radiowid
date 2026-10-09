@@ -67,11 +67,17 @@ export function widokZPunktu(punkt, stacje, scena, { hRx = 1.5, gruntPunktu } = 
 // w zabudowie 6,03 - J krawędzi z prawdziwych budynków i koron między punktem a nadajnikiem (odcinek w mieście).
 // Krzywe P.1546 uśredniają teren po drodze, więc odcinek daleki (daleko.bin) nie jest tu już używany; teren przy odbiorniku
 // wchodzi przez kąt prześwitu (§11): dolina pod wzgórzem w stronę nadajnika traci, choć krzywe jej nie widzą.
-// Progi (ITU-R BS.412, minimalne natężenie użyteczne): stereo w zabudowie ok. 60, mono 48 dBµV/m.
-export const PROGI_FM = { slychac: 60, granica: 48 };
+// Progi FM (ITU-R BS.412, minimalne natężenie użyteczne na 10 m, zależne od zakłóceń przemysłowych otoczenia):
+//   "slychac" (dobry odbiór) = stereo, "granica" = mono; otoczenie: 0 wieś 54/48, 1 miasto 66/60, 2 duże miasto 74/70 dBµV/m.
+// Otoczenie punktu z dane/kraj/otoczenie.json.gz (przygotuj/otoczenie_kraj.py: gęstość punktów adresowych w promieniu 1 km,
+// duże miasto = większość tych adresów w mieście >= 100 tys. mieszkańców). Bez otoczenia: miasto (PROGI_FM).
+export const PROGI_FM_OTOCZENIE = [
+  { nazwa: "wieś", slychac: 54, granica: 48 }, { nazwa: "miasto", slychac: 66, granica: 60 }, { nazwa: "duże miasto", slychac: 74, granica: 70 }];
+export const PROGI_FM = PROGI_FM_OTOCZENIE[1];
 // progi per rodzaj [dBµV/m] (klucz "slychac" = dobry odbiór): DAB+ pasmo III - ok. 50 przenośny, 38 na zewnątrz (EBU, przybliżenie);
 // DVB-T pasmo IV/V - 56 antena dachowa (plan GE06, 64-QAM), 48 granica. To przybliżenia do oceny, nie normy odbioru.
 export const PROGI_RTV = { fm: PROGI_FM, dab: { slychac: 50, granica: 38 }, dvbt: { slychac: 56, granica: 48 } };
+export const progiRtv = (typ, otoczenie) => typ === "fm" ? PROGI_FM_OTOCZENIE[otoczenie] ?? PROGI_FM : PROGI_RTV[typ] ?? PROGI_FM;
 // Kąt prześwitu terenu [°] (P.1546 §11, tcaCalc.m wzorca): największy kąt wzniesienia od anteny odbiorczej (z0 n.p.m.) do
 // terenu w stronę nadajnika (tx, ty), do 16 km i nie za nadajnik, bez krzywizny Ziemi - MINUS kąt wzniesienia anteny nadajnika
 // (tz, z krzywizną 4/3, gdy dodatni). Odstępstwo od P.1546-6 (kąt bezwzględny) na rzecz P.1546-2 (wzorzec ma je w komentarzu
@@ -93,7 +99,7 @@ function tlumienieAnteny(tl, az) {                    // tl: 36 wartości co 10�
 }
 
 // fm: {meta: {grupy}} z dane/rtv.json (przygotuj/fm.mjs); miasto: siatka kwadratu
-export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu } = {}) {
+export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu, otoczenie } = {}) {
   const { miasto = null, teren = null, R_E = 8.5e6 } = scena;
   const z0 = (gruntPunktu ?? teren.wysokosc(punkt.x, punkt.y)) + hRx, zt = teren ? teren.wysokosc(punkt.x, punkt.y) + hRx : null;
   const odb = { xs: Float64Array.of(punkt.x), ys: Float64Array.of(punkt.y), Z: Float32Array.of(z0) };
@@ -113,7 +119,7 @@ export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu } = {}) {
       wynik.push({ ...p, typ: p.typ ?? "fm", gi, km: dkm, azymut: Math.round((azOdNadajnika + 180) % 360), hant: g.hant, h1: Math.round(h1),
         tca: Math.round(tca * 100) / 100, teren_db: Math.round(-pt * 10) / 10,
         E_dBuVm: Math.round(E * 10) / 10, zaslona_db: Math.round(-popr * 10) / 10, krawedz: zaslona > 0 && 6.03 - zaslona < popr + 1e-9 ? "zabudowa" : "antena nisko",
-        ocena: E >= (PROGI_RTV[p.typ ?? "fm"] ?? PROGI_FM).slychac ? "slychac" : E >= (PROGI_RTV[p.typ ?? "fm"] ?? PROGI_FM).granica ? "granica" : "nie" });
+        ocena: ((pr) => E >= pr.slychac ? "slychac" : E >= pr.granica ? "granica" : "nie")(progiRtv(p.typ ?? "fm", otoczenie)) });
     }
   });
   return wynik.sort((a, b) => b.E_dBuVm - a.E_dBuVm);

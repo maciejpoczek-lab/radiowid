@@ -16,7 +16,9 @@ globalThis.fetch = async (u) => { try { const p = BAZA16 && u.endsWith("-16.pak"
 const czytaj = async (p) => new Uint8Array(readFileSync(TEL + p)), json = (p) => JSON.parse(readFileSync(M + "dane/" + p, "utf8"));
 const HRX = +(process.env.HRX ?? 1.5), RODZAJ = process.env.RODZAJ ?? "lte";
 const { meta, t } = await wczytajZestaw("../dane/obszar-2880-2180-z", czytaj);
-const m = meta.miasto, U = meta.uklad, teren = { wysokosc: probnikDolek(meta.teren, t), krok: meta.KROK_TERENU };
+// poza wycinkiem mozaiki (kat przeswitu P.1546 §11 siega 16 km): -Infinity - probka nie podnosi kata ani krawedzi
+const bezpieczny = (h) => (x, y) => { try { return h(x, y); } catch { return -Infinity; } };
+const m = meta.miasto, U = meta.uklad, teren = { wysokosc: bezpieczny(probnikDolek(meta.teren, t)), krok: meta.KROK_TERENU };
 const sc = (mi) => ({ miasto: mi, teren, R_E: meta.R_E, podstawaKorony: meta.PODSTAWA_KORONY });
 
 // sceny: okno miasta w ukladzie mapy (metry od E0/N0), komorka poziomu; 100 m - okno wyrownane do 100 m obejmujace 5,76 km

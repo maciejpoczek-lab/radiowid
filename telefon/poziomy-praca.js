@@ -11,7 +11,7 @@ import { geometriaLaczona, stratyLaczone } from "../silnik/laczony.js";
 import { probnikDolek } from "../silnik/teren-dolek.js";
 import { wczytajZestaw } from "../silnik/dane.js";
 import { POZIOMY, warstwyPoziomu, paczkiOkna, otworzPaczke } from "../silnik/paczka.js";
-import { fmZPunktu, poleNaSiatce, widokZPunktu, PROGI_RTV } from "../silnik/punkt.js";
+import { fmZPunktu, poleNaSiatce, widokZPunktu, progiRtv } from "../silnik/punkt.js";
 
 const PACZKI = "../dane/paczki/v1", pamiec = new Map();
 // poziom powiat w całej Polsce: NMT 100 m kraju w kwadratach 100 km (docs §8.5) zamiast warstwy -100 paczek
@@ -34,7 +34,7 @@ function zaladujKraj(x0, y0, x1, y1) {                    // EPSG:2180 bezwzglę
   }));
 }
 async function przygotuj() {
-  const [{ meta, t }, kr] = await Promise.all([wczytajZestaw("../dane/obszar-2880-2180-z"), gz("../dane/kraj/nadajniki.json.gz")]);
+  const [{ meta, t }, kr, ot] = await Promise.all([wczytajZestaw("../dane/obszar-2880-2180-z"), gz("../dane/kraj/nadajniki.json.gz"), gz("../dane/kraj/otoczenie.json.gz")]);
   const U = meta.uklad, T = probnikDolek(meta.teren, t), RL = meta.teren.RL;
   // nadajniki radia/TV całej Polski (rtv_kraj.py): e/n bezwzględnie -> układ wątku
   const fm = { meta: { ...kr.meta, grupy: kr.meta.grupy.map((g) => ({ ...g, x: g.e - U.E0, y: g.n - U.N0 })) } };
@@ -49,7 +49,11 @@ async function przygotuj() {
     if (a) { const v = a[Math.floor((kn * 100000 + 100000 - N) / 100) * 1000 + Math.floor((E - ke * 100000) / 100)]; if (!Number.isNaN(v)) return v; }
     return 0;
   };
-  return { meta, U, fm, teren: { wysokosc, krok: meta.KROK_TERENU } };
+  // otoczenie odbiornika FM (progi BS.412): 0 wieś, 1 miasto, 2 duże miasto; siatka kraju (przygotuj/otoczenie_kraj.py), poza nią wieś
+  const K = Uint8Array.from(atob(ot.klasa), (c) => c.charCodeAt(0));
+  const otoczenie = (x, y) => { const i = Math.floor((ot.N1 - y - U.N0) / ot.krok), j = Math.floor((x + U.E0 - ot.E0) / ot.krok);
+    return i < 0 || j < 0 || i >= ot.ny || j >= ot.nx ? 0 : K[i * ot.nx + j]; };
+  return { meta, U, fm, otoczenie, teren: { wysokosc, krok: meta.KROK_TERENU } };
 }
 const MARGINES_KRAJ = 20000;                              // teren kraju wczytany wokół okna (stacje za krawędzią, próbki drogi fali)
 const krajOkna = (x0, y0, x1, y1) => zaladujKraj(x0 - MARGINES_KRAJ, y0 - MARGINES_KRAJ, x1 + MARGINES_KRAJ, y1 + MARGINES_KRAJ);
@@ -109,29 +113,31 @@ async function obsluz(z) {
     const L = z.f.map((f) => stratyLaczone(odb, T, geo, f, { rozpraszanie: true }).L);
     postMessage({ id: z.id, L }, L.map((a) => a.buffer));
   } else if (z.typ === "pole") {
-    const E = poleNaSiatce(odbiorniki(z.siatka, z.hRx), baza.fm, z.gi, z.rodzaj, sc(), z.hRx, z.program);
-    postMessage({ id: z.id, E }, [E.buffer]);
+    const odb = odbiorniki(z.siatka, z.hRx), E = poleNaSiatce(odb, baza.fm, z.gi, z.rodzaj, sc(), z.hRx, z.program);
+    // FM: otoczenie każdego punktu siatki - strona mierzy jasność względem progów tego miejsca
+    const K = z.rodzaj === "fm" ? Uint8Array.from({ length: E.length }, (_, q) => baza.otoczenie(odb.xs[q % odb.xs.length], odb.ys[Math.floor(q / odb.xs.length)])) : null;
+    postMessage({ id: z.id, E, K }, K ? [E.buffer, K.buffer] : [E.buffer]);
   } else if (z.typ === "grupy") {
     await krajOkna(z.P.x + baza.U.E0, z.P.y + baza.U.N0, z.P.x + baza.U.E0, z.P.y + baza.U.N0);
     const g = baza.teren.wysokosc(z.P.x, z.P.y), lista = fmZPunktu(z.P, tylko(z.rodzaj), { ...sc(), miasto: null }, { hRx: z.hRx, gruntPunktu: g });
     postMessage({ id: z.id, grupy: [...new Set(lista.map((p) => p.gi))] });
   } else if (z.typ === "punkt") {
-    const s = await scenaPunktu(z.P), op = { hRx: z.hRx, gruntPunktu: gruntW(s, z.P) }, scn = sc(s);
+    const s = await scenaPunktu(z.P), otoczenie = baza.otoczenie(z.P.x, z.P.y), op = { hRx: z.hRx, gruntPunktu: gruntW(s, z.P), otoczenie }, scn = sc(s);
     const stacje = widokZPunktu(z.P, z.stacje, scn, op);
     // radio/TV: cała Polska daje tysiące programów - do strony tylko te w pobliżu progu, reszta jako liczba
     const fm = [], reszta = { fm: 0, dab: 0, dvbt: 0 };
     for (const p of fmZPunktu(z.P, baza.fm, scn, op)) {
-      if (p.E_dBuVm < PROGI_RTV[p.typ].granica - 20) { reszta[p.typ]++; continue; }
+      if (p.E_dBuVm < progiRtv(p.typ, otoczenie).granica - 20) { reszta[p.typ]++; continue; }
       const { typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena } = p;
       fm.push({ typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena });
     }
     let dach = null;                                    // wysokość budynku nad gruntem w kratce 4 m (0 poza budynkami) - dach w punkcie i punkt orientacyjny
     if (s?.BUD) { const H = new Float32Array(s.nx * s.ny); for (let k = 0; k < H.length; k++) H[k] = s.BUD[k] ? s.O[k] - s.G[k] : 0;
       dach = { X0: s.X0, Y1: s.Y1, kom: s.DX, nx: s.nx, ny: s.ny, H }; }
-    postMessage({ id: z.id, stacje, fm, reszta, dach, scena: s ? "ulica" : "teren" }, dach ? [dach.H.buffer] : []);
+    postMessage({ id: z.id, stacje, fm, reszta, dach, otoczenie, scena: s ? "ulica" : "teren" }, dach ? [dach.H.buffer] : []);
   } else if (z.typ === "wysokosci") {
     const s = await scenaPunktu(z.P), g = gruntW(s, z.P), fm = tylko(z.rodzaj), scn = sc(s);
-    postMessage({ id: z.id, wys: z.hs.map((h) => ({ h, fm: fmZPunktu(z.P, fm, scn, { hRx: h, gruntPunktu: g })
+    postMessage({ id: z.id, wys: z.hs.map((h) => ({ h, fm: fmZPunktu(z.P, fm, scn, { hRx: h, gruntPunktu: g, otoczenie: baza.otoczenie(z.P.x, z.P.y) })
       .filter((p) => p.ocena !== "nie").map(({ gi, program, ocena }) => ({ gi, program, ocena })) })) });
   }
 }

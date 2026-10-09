@@ -16,7 +16,7 @@ if [ -d "$M/dane/obszar-2880-2180-z" ]; then                               # ukl
   mkdir -p "$C/dane/obszar-2880-2180-z"; cp "$M/dane/obszar-2880-2180-z"/* "$C/dane/obszar-2880-2180-z/"
   for f in stacje rtv; do cp "$M/dane/$f-2180.json" "$C/dane/"; done
   if [ -d "$M/dane/kraj/teren-100" ]; then                                 # poziomy.html krok 2: pliki krajowe, jednakowe dla wszystkich (bez teren100.npy)
-    mkdir -p "$C/dane/kraj/teren-100"; cp "$M"/dane/kraj/nadajniki.json.gz "$M"/dane/kraj/teren-1000.pak "$C/dane/kraj/"; for f in podklad miejscowosci stacje; do cp "$M/dane/kraj/$f.json.gz" "$C/dane/kraj/"; done; cp "$M"/dane/kraj/teren-100/*.pak "$C/dane/kraj/teren-100/"   # pliki kraju obowiazkowe: brak = blad, nie cicha pusta strona
+    mkdir -p "$C/dane/kraj/teren-100"; cp "$M"/dane/kraj/nadajniki.json.gz "$M"/dane/kraj/teren-1000.pak "$C/dane/kraj/"; for f in podklad miejscowosci stacje otoczenie; do cp "$M/dane/kraj/$f.json.gz" "$C/dane/kraj/"; done; cp "$M"/dane/kraj/teren-100/*.pak "$C/dane/kraj/teren-100/"   # pliki kraju obowiazkowe: brak = blad, nie cicha pusta strona
   fi
   for f in budynki-wektor mapa-wektor; do cp "$M/dane/$f-2180.json.gz" "$C/dane/"; done
 fi

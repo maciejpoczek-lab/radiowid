@@ -228,7 +228,7 @@ const KAWA = "https://buy.stripe.com/8x25kD9l6bfWeRf7oFbjW00";   // link do pła
 const kawaKarta = () => KAWA ? `<a class="kawaKarta" href="${KAWA}" rel="noopener noreferrer" target="_blank"><svg class="ikKawa duza" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg><span><b>Pomogło? Postaw kawę</b><br><span class="maly">dobrowolny napiwek · BLIK lub karta</span></span></a>` : "";
 import { wczytajZestaw } from "/silnik/dane.js";
 import { POZIOMY, poziomWidoku, warstwyPoziomu, otworzPaczke, na2180 } from "/silnik/paczka.js";
-import { PROGI_RTV, PASMA_MHZ, ocena, GRANICA_DB, ocenaZasiegu } from "/silnik/punkt.js";
+import { PROGI_RTV, PROGI_FM_OTOCZENIE, progiRtv, PASMA_MHZ, ocena, GRANICA_DB, ocenaZasiegu } from "/silnik/punkt.js";
 import { poprawkaOdbiornika } from "/silnik/p1546.js";
 
 const PACZKI = "/dane/paczki/v1";
@@ -616,8 +616,9 @@ function wskazowka() {                    // radio/TV z anteną niżej niż 10 m
 function pokazSekcje() {
   const rtv = !!rodzaj.rtv, kol = `rgb(${rodzaj.kol.join(",")})`;
   document.documentElement.style.setProperty("--akcent", kol);
-  $("skalaOd").textContent = rtv ? `${PROGI_RTV[rodzaj.id].granica - 4} dBµV/m` : "koniec zasięgu";
-  $("skalaDo").textContent = rtv ? `${PROGI_RTV[rodzaj.id].slychac + 4} dBµV/m` : "mocny sygnał";
+  // FM: progi zależą od otoczenia (wieś / miasto / duże miasto), więc skala opisowa zamiast liczb
+  $("skalaOd").textContent = rodzaj.id === "fm" ? "poniżej mono" : rtv ? `${PROGI_RTV[rodzaj.id].granica - 4} dBµV/m` : "koniec zasięgu";
+  $("skalaDo").textContent = rodzaj.id === "fm" ? "stereo z zapasem" : rtv ? `${PROGI_RTV[rodzaj.id].slychac + 4} dBµV/m` : "mocny sygnał";
   GRUPY.forEach((g, b) => { $("pasma").children[b].querySelector(".nazwaGrupy").textContent = nazwaGrupy(g); });
   $("sekcjaStacje").hidden = $("grupaSieci").hidden = rtv; $("grupaProgram").hidden = $("sekcjaFm").hidden = !rtv;
   wskazowka();
@@ -652,7 +653,8 @@ async function przelicz() {
   const L = { x0: x0 - U.E0, y1: y1 - U.N0, n, krok };                  // siatka w układzie wątków (lokalnym)
   const kol = rodzaj.rtv ? [rodzaj.kol] : GRUPY.map((g) => barwa(g.f));   // radio/TV: jeden kolor rodzaju; komórki: kolor grupy pasm
   const swiatloNowe = { x0, y1, n, krok, A: kol.map(() => null), kol, mobilne: !rodzaj.rtv, wPasie: m < 100 }, sumy = kol.map(() => null);
-  const jasnosc = rodzaj.rtv ? ((p) => (E) => Math.min(Math.max((E - (p.granica - 4)) / (p.slychac - p.granica + 8), 0), 1))(PROGI_RTV[rodzaj.id])
+  let Kw = null;                           // FM: otoczenie każdego punktu (progi BS.412 wieś / miasto / duże miasto) z wątku
+  const jasnosc = rodzaj.rtv ? (E, q) => { const p = progiRtv(rodzaj.id, Kw?.[q]); return Math.min(Math.max((E - (p.granica - 4)) / (p.slychac - p.granica + 8), 0), 1); }
                              : (b) => (Lv) => Math.min(Math.max((GRANICA_DB(GRUPY[b].f) - Lv) / L_ZAKRES, 0), 1);   // ciemno na granicy zasięgu pasma
   let zadania;
   if (rodzaj.rtv) {
@@ -661,7 +663,9 @@ async function przelicz() {
       : (await zlecaj({ typ: "grupy", P: { x: widok.E - U.E0, y: widok.N - U.N0 }, hRx, rodzaj: rodzaj.id }, zywe))?.grupy ?? [];
     zadania = gr.slice(0, ILE_RTV).map((gi) => ({ typ: "pole", siatka: L, hRx, gi, rodzaj: rodzaj.id, program }));
     $("legenda").textContent = `Jasność = natężenie pola ${rodzaj.nazwa}${program ? ` (${program})` : ""} z ${Math.min(ILE_RTV, gr.length)} nadajników najmocniejszych ${P && wynik ? "w punkcie" : "w środku widoku"} (ITU-R P.1546). ` +
-      `Dobry odbiór od ${PROGI_RTV[rodzaj.id].slychac} dBµV/m, granica ${PROGI_RTV[rodzaj.id].granica}.` +
+      (rodzaj.id === "fm" ? `Dobry odbiór (stereo) od ${PROGI_FM_OTOCZENIE.map((o) => `${o.slychac} dBµV/m (${o.nazwa})`).join(", ")}; ` +
+        `granica (mono) ${PROGI_FM_OTOCZENIE.map((o) => o.granica).join(" / ")} — im więcej zabudowy, tym więcej zakłóceń z urządzeń elektrycznych (ITU-R BS.412).`
+        : `Dobry odbiór od ${PROGI_RTV[rodzaj.id].slychac} dBµV/m, granica ${PROGI_RTV[rodzaj.id].granica}.`) +
       (przyGranicy(x0, y1 - n * krok, x0 + n * krok, y1) ? " Tylko polskie nadajniki: przy granicy i nad morzem zagraniczne nie są liczone." : "");
   } else {
     const ls = stacje.stacje.filter((s) => s.pasma.some(rodzaj.p) && (!siec.re || s.operatorzy.some((o) => siec.re.test(o)))), xL0 = L.x0, xL1 = L.x0 + n * krok, yL0 = L.y1 - n * krok, yL1 = L.y1;
@@ -696,6 +700,7 @@ async function przelicz() {
   await Promise.all(zadania.map((z) => zlecaj(z, zywe).then((r) => {
     if (!r || !zywe()) return;
     let q = 0; const wyn = r.E ? [r.E] : z.fs.map((f) => (f ? r.L[q++] : null));   // wynik po grupach (radio/TV: jedna)
+    if (r.K) Kw ??= r.K;
     wyn.forEach((a, b) => {
       if (!a) return;
       const suma = sumy[b] ??= new Float32Array(n * n).fill(rodzaj.rtv ? -Infinity : Infinity);
@@ -878,8 +883,8 @@ function wypelnijProgramy() {              // programy rodzaju od najmocniejszeg
     ...ps.map((p) => new Option(`${nazwaPr(p.program)} — ${OCENA[p.ocena]}`, p.program)));
   sel.value = program ?? "";
 }
-function sila(typ, E) {                   // natężenie wobec progów -> słowo i rada dla montującego
-  const p = PROGI_RTV[typ];
+function sila(typ, E) {                   // natężenie wobec progów -> słowo i rada dla montującego (FM: progi otoczenia punktu)
+  const p = progiRtv(typ, wynik?.otoczenie);
   if (E >= p.slychac + 10) return ["mocny", "czysta", "wystarczy zwykła, niewielka antena kierunkowa"];
   if (E >= p.slychac) return ["dobry", "czysta", "zwykła antena kierunkowa"];
   if (E >= p.granica) return ["słaby", "czesciowo", "antena kierunkowa o dużym zysku, jak najwyżej; czasem potrzebny wzmacniacz masztowy"];
@@ -997,7 +1002,8 @@ function karta() {                        // odpowiedź dla montującego: gdzie 
         <div>na nadajnik <b>${esc(ladnie(b.p0.stacja))}</b>, ${odl(b.p0.km)}</div></div></div>
       <dl>
         <dt>Ułożenie</dt><dd>${ULOZENIE[b.p0.pol] ?? "—"}</dd>
-        <dt>Sygnał</dt><dd><b class="${klasa}">${slowo}</b> na ${hTekst(hRx)} — ${rada}</dd>
+        <dt>Sygnał</dt><dd><b class="${klasa}">${slowo}</b> na ${hTekst(hRx)} — ${rada}</dd>${rodzaj.id === "fm" && wynik.otoczenie != null ? ((o) =>
+        `<dt>Otoczenie</dt><dd>${o.nazwa} — dobry odbiór (stereo) od ${o.slychac} dBµV/m, mono od ${o.granica}; im gęstsza zabudowa, tym więcej zakłóceń</dd>`)(PROGI_FM_OTOCZENIE[wynik.otoczenie]) : ""}
         <dt>Wysokość</dt><dd id="kartaWys" class="maly">liczę…</dd>
         <dt>Antena</dt><dd>${antena}</dd>
       </dl>
