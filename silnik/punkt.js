@@ -101,7 +101,7 @@ export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu } = {}) {
   fm.meta.grupy.forEach((g, gi) => {
     if (!g.programy.length) return;
     const T = [g.x, g.y, g.z];
-    const umax = miasto ? geometriaLaczona(odb, T, { miasto, teren: null, R_E }).umax[0] : -Infinity;
+    const umax = miasto ? geometriaLaczona(odb, T, { miasto, teren: null, R_E, wtorne: false }).umax[0] : -Infinity;
     const azOdNadajnika = (Math.atan2(punkt.x - g.x, punkt.y - g.y) * 180 / Math.PI + 360) % 360;   // w siatce ukladu mapy
     const dkm = Math.hypot(g.x - punkt.x, g.y - punkt.y) / 1000, h1 = wysokoscH1(dkm, heffKierunku(g.heff, g.hant, azOdNadajnika), g.hant);
     const azGeo = (azOdNadajnika + (g.zbieznosc ?? 0) + 360) % 360;   // charakterystyka anteny UKE: azymut geograficzny (uklad 2180: + zbieznosc w nadajniku)
@@ -127,7 +127,7 @@ export function poleNaSiatce(odb, fm, gi, typ, scena, hRx, program = null) {
   const programy = g.programy.filter((p) => (p.typ ?? "fm") === typ && (!program || p.program === program)), nx = odb.xs.length, ny = odb.ys.length;
   const E = new Float32Array(nx * ny).fill(-Infinity); if (!programy.length) return E;
   const T = [g.x, g.y, g.z];
-  const blisko = miasto ? geometriaLaczona(odb, T, { miasto, teren: null, R_E }).umax : null;
+  const blisko = miasto ? geometriaLaczona(odb, T, { miasto, teren: null, R_E, wtorne: false }).umax : null;
   for (let i = 0; i < ny; i++) {
     const y = odb.ys[i];
     for (let j = 0; j < nx; j++) {

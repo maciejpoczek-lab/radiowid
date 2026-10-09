@@ -26,6 +26,11 @@ function roznica(nazwa, a, b, prog) {
   const ok = max <= prog; if (!ok) zle++;
   console.log(`  ${ok ? "OK " : "ZLE"} ${nazwa.padEnd(34)} max ${max.toExponential(2)} dB (prog ${prog})`);
 }
+// ile dodaja krawedzie wtorne (P.526-13 §4.3) - poza wzorcem Pythona, tylko rozklad do oceny
+function rozklad(nazwa, a, b) {
+  const d = Float64Array.from(a, (v, k) => v - b[k]).sort(), q = (p) => d[Math.min(d.length - 1, Math.floor(p * d.length))].toFixed(1);
+  console.log(`      krawedzie wtorne ${nazwa}: >0 w ${(100 * d.filter((v) => v > 0).length / d.length).toFixed(0)}% punktow, mediana ${q(0.5)}, p90 ${q(0.9)}, p99 ${q(0.99)}, max ${q(1)} dB`);
+}
 const ms = (t0) => (performance.now() - t0).toFixed(0) + " ms";
 
 { // samo miasto: fala.py
@@ -42,7 +47,8 @@ const ms = (t0) => (performance.now() - t0).toFixed(0) + " ms";
     const czas = ms(t0);
     const ref = geometriaMiasto(scena, T, { hRx: meta.H_RX, podstawaKorony: meta.PODSTAWA_KORONY, smaxGeom: meta.smaxGeom });
     for (const fq of f) {
-      const { L, nad } = stratyLaczone(odb, T, geo, fq);
+      const { L, nad } = stratyLaczone(odb, T, geo, fq, { wtorne: false });   // wzorce Pythona: jedna krawedz
+      rozklad(`${nazwa}_${fq}`, stratyLaczone(odb, T, geo, fq).L, L);
       const r = stratyMiasto(scena, T, ref, fq, { hRx: meta.H_RX });
       roznica(`${nazwa}_${fq} L vs silnik miasta JS (${czas})`, L, r.L, 0);
       roznica(`${nazwa}_${fq} L vs fala.py`, L, t[`${nazwa}_${fq}_L`], 1e-4);
