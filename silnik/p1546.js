@@ -2,8 +2,9 @@
 // droga lądowa, 50% czasu, 50% miejsc, 1 kW e.r.p., odbiór na wysokości odniesienia 10 m (krzywe), plus poprawka
 // anteny odbiorczej z §9. Przeniesione z implementacji wzorcowej ITU-R SG3 (P1546FieldStrMixed.m v6.2): kroki 7–9
 // (interpolacja po odległości, wysokości nadajnika h1 i częstotliwości), §3 (h1), §9 (Step_14a). Pominięte: drogi
-// morskie i mieszane, d < 1 km, poprawka kąta prześwitu terenu (§11), rozpraszanie troposferyczne (§13), zmienność
-// miejsc (§12). Sprawdzenie zgodności z przykładami ITU: weryfikacja/p1546.mjs.
+// morskie i mieszane, d < 1 km, rozpraszanie troposferyczne (§13), zmienność miejsc (§12). Poprawka kąta prześwitu
+// terenu przy odbiorniku (§11, krok 12) - poprawkaKataPrzeswitu; kąt liczy wywołujący (silnik/punkt.js, katPrzeswitu).
+// Sprawdzenie zgodności z przykładami ITU: weryfikacja/p1546.mjs.
 import T from "./p1546-tabele.js";
 
 const ODL = T.d, WYS = T.h1, FREQ = [100, 600, 2000];
@@ -64,6 +65,14 @@ export function wysokoscH1(d, heff, ha) {
 export function poprawkaOdbiornika(h2, f, zaslonaDb = 0) {
   const otwarty = (3.2 + 6.2 * Math.log10(f)) * Math.log10(h2 / 10);
   return zaslonaDb > 0 ? Math.min(otwarty, 6.03 - zaslonaDb) : otwarty;
+}
+
+// §11 (krok 12, Step_12a wzorca): poprawka [dB] na kąt prześwitu terenu tca [°] - kąt wzniesienia linii od anteny odbiorczej,
+// która mija cały teren w stronę nadajnika do 16 km (bez krzywizny Ziemi). tca ograniczony do 0,55..40°, więc poprawka jest
+// zawsze ≤ 0 (przy 0,55° ok. 0 dB): odbiornik w dolinie traci, na szczycie nie zyskuje ponad krzywe.
+export function poprawkaKataPrzeswitu(f, tca) {
+  const t = Math.min(Math.max(tca, 0.55), 40);
+  return Jnu(0.036 * Math.sqrt(f)) - Jnu(0.065 * t * Math.sqrt(f));
 }
 
 // Gotowe pole w punkcie [dBµV/m]: e.r.p. [kW], d [km], h1 [m], f [MHz], h2 [m], zasłona miejska [dB], tłumienie anteny nadawczej [dB]

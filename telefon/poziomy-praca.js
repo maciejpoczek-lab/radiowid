@@ -23,10 +23,10 @@ const zrodlo = (p) => p.m === 100 ? [BAZA_KRAJ, KRAJ100, pamiecKraj] : [PACZKI, 
 const gz = (u) => fetch(u).then((r) => new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).json());
 let baza, scena = null, kluczSceny = "", scenaP = null, kluczP = "";   // scena widoku i scena punktu - osobno, żeby punkt nie wyrzucał widoku z pamięci
 const pamiecKraj = new Map();                             // osobno od paczek: nazwy E600N400 bywają i paczką 20 km, i kwadratem 100 km
-const krajGotowy = new Map();                             // "ke_kn" -> Float32Array 1000 × 1000 | null, już wczytane (odczyt synchroniczny w wysokosc)
+const krajGotowy = new Map();                             // ke * 1000 + kn -> Float32Array 1000 × 1000 | null, już wczytane (odczyt synchroniczny w wysokosc)
 function zaladujKraj(x0, y0, x1, y1) {                    // EPSG:2180 bezwzględnie; całe pliki, nigdy fragment
   return Promise.all(paczkiOkna(x0, y0, x1, y1, 100000).map(async (n) => {
-    const ke = +n.slice(1, 4) / 100, kn = +n.slice(5, 8) / 100, k = `${ke}_${kn}`;
+    const ke = +n.slice(1, 4) / 100, kn = +n.slice(5, 8) / 100, k = ke * 1000 + kn;
     if (krajGotowy.has(k)) return;
     if (!pamiecKraj.has(n)) pamiecKraj.set(n, fetch(`${BAZA_KRAJ}/${n}.pak`).then((r) => r.ok ? r.arrayBuffer() : null).catch(() => null)
       .then((b) => { if (!b) return null; const p = otworzPaczke(b); p.bajty = b.byteLength; return p; }));
@@ -39,9 +39,13 @@ async function przygotuj() {
   // nadajniki radia/TV całej Polski (rtv_kraj.py): e/n bezwzględnie -> układ wątku
   const fm = { meta: { ...kr.meta, grupy: kr.meta.grupy.map((g) => ({ ...g, x: g.e - U.E0, y: g.n - U.N0 })) } };
   // teren: T 30 m wokół rynku -> NMT 100 m kraju (wczytane kwadraty) -> 0 (zagranica, morze: teren nieznany)
+  // ostatni kwadrat w pamięci podręcznej: kolejne próbki profilu prawie zawsze trafiają w ten sam (kąt prześwitu, krawędzie)
+  let kOst = NaN, aOst = null;
   const wysokosc = (x, y) => {
     if (Math.abs(x) < RL && Math.abs(y) < RL) return T(x, y);
-    const E = x + U.E0, N = y + U.N0, ke = Math.floor(E / 100000), kn = Math.floor(N / 100000), a = krajGotowy.get(`${ke}_${kn}`);
+    const E = x + U.E0, N = y + U.N0, ke = Math.floor(E / 100000), kn = Math.floor(N / 100000), kk = ke * 1000 + kn;
+    if (kk !== kOst) { aOst = krajGotowy.get(kk); kOst = aOst === undefined ? NaN : kk; }   // niewczytany: bez zapamiętania (dojdzie później)
+    const a = aOst;
     if (a) { const v = a[Math.floor((kn * 100000 + 100000 - N) / 100) * 1000 + Math.floor((E - ke * 100000) / 100)]; if (!Number.isNaN(v)) return v; }
     return 0;
   };

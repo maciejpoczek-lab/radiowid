@@ -9,7 +9,9 @@ import { fmZPunktu } from "../silnik/punkt.js";
 const HERE = dirname(fileURLToPath(import.meta.url)), cz = async (p) => new Uint8Array(readFileSync(p));
 const { meta, t } = await wczytajZestaw(join(HERE, "../dane/obszar-2880-z"), cz);
 const fm = JSON.parse(readFileSync(join(HERE, "../dane/rtv.json"), "utf8"));
-const scena = { miasto: { ...meta.miasto, O: t.O, G: t.G, ZW: t.ZW }, teren: { wysokosc: probnikDolek(meta.teren, t), krok: 30 }, R_E: meta.R_E };
+// poza wycinkiem zestawu teren nieznany (kąt prześwitu sięga 16 km): -Infinity = brak przeszkody, jak w wątku mapy 0 m za granicą
+const bezpieczny = (h) => (x, y) => { try { return h(x, y); } catch { return -Infinity; } };
+const scena = { miasto: { ...meta.miasto, O: t.O, G: t.G, ZW: t.ZW }, teren: { wysokosc: bezpieczny(probnikDolek(meta.teren, t)), krok: 30 }, R_E: meta.R_E };
 const P = { x: +(process.argv[2] ?? 0), y: +(process.argv[3] ?? 0) };
 const t0 = performance.now(); const w = fmZPunktu(P, fm, scena, { hRx: +(process.argv[4] ?? 1.5) }); const ms = performance.now() - t0;
 console.log(`SYMULACJA - radio/TV z punktu (${P.x}, ${P.y}) m od rynku: ${w.length} programów, ${ms.toFixed(0)} ms`);

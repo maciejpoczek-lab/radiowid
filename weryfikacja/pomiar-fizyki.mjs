@@ -58,4 +58,25 @@ for (const [nazwa, lat, lon] of PUNKTY) {
   for (const t of ["fm", "dab", "dvbt"]) console.log(`  ${t.padEnd(4)}: słychać ${ile(t, "slychac")} · granica ${ile(t, "granica")} · nie ${ile(t, "nie") + w.reszta[t]}`);
   for (const p of rtv.filter((p) => p.typ === "fm").slice(0, 3)) console.log(`    fm ${p.E.toFixed(1)} dBµV/m ${p.ocena} ${p.program} (${p.stacja}, ${p.km} km)`);
 }
+// mapa widoku (jak telefon/poziomy.html, przelicz): scena poziomu, 360 × 360 punktów, radio FM - 3 grupy najmocniejsze
+// w środku, komórki - 6 najbliższych stacji; czas liczenia i ile punktów ponad progi
+const { PROGI_RTV } = await import("../silnik/punkt.js"), { POZIOMY, poziomWidoku } = await import("../silnik/paczka.js");
+for (const [nazwa, bok] of [["Garwolin, rynek", 5760], ["Nowy Sącz, dolina Dunajca", 36000]]) {
+  const P = wynik[nazwa].P, E = P.x + E0, N = P.y + N0, pw = poziomWidoku(bok, 360), m = pw.poziom.m, krok = Math.max(m, Math.round(bok / 360)), n = Math.ceil(bok / krok);
+  const x0 = Math.floor((E - n * krok / 2) / m) * m, y1 = Math.ceil((N + n * krok / 2) / m) * m, mar = Math.max(1000, 0.25 * n * krok);
+  const sx0 = Math.floor((x0 - mar) / m) * m, sy1 = Math.ceil((y1 + mar) / m) * m, sn = Math.ceil((n * krok + 2 * mar) / m), f = Math.ceil(sn / 1600);
+  let t = performance.now(); await zlec({ typ: "scena", poziom: m, x0: sx0, y1: sy1, nx: sn, ny: sn, f }); const tScena = performance.now() - t;
+  const siatka = { x0: x0 - E0, y1: y1 - N0, n, krok }, gr = (await zlec({ typ: "grupy", P, hRx: 1.5, rodzaj: "fm" })).grupy.slice(0, 3);
+  t = performance.now(); const pola = []; for (const gi of gr) pola.push((await zlec({ typ: "pole", siatka, hRx: 1.5, gi, rodzaj: "fm" })).E); const tPole = performance.now() - t;
+  const naj = new Float32Array(n * n).fill(-Infinity); for (const a of pola) for (let k = 0; k < a.length; k++) naj[k] = Math.max(naj[k], a[k]);
+  const p = PROGI_RTV.fm, ponad = (v) => [...naj].filter((e) => e >= v).length;
+  const st = stacje.filter((s) => Math.hypot(s.x - P.x, s.y - P.y) <= 10000).sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y)).slice(0, 6);
+  t = performance.now(); let zas = 0;
+  for (const s of st) { const L = (await zlec({ typ: "swiatlo", siatka, hRx: 1.5, S: { x: s.x, y: s.y, h: s.h_ant ?? 35 }, f: [1842] })).L[0]; for (const v of L) if (v <= 135) zas++; }
+  const tSw = performance.now() - t;
+  wynik[nazwa].mapa = { poziom: m, n, krok, ms_scena: Math.round(tScena), ms_pole3: Math.round(tPole), ms_swiatlo6: Math.round(tSw),
+    fm_slychac: ponad(p.slychac), fm_granica: ponad(p.granica), lte1800_w_zasiegu: zas };
+  console.log(`\nmapa ${nazwa}: ${pw.poziom.nazwa} ${m} m, ${n} × ${n} co ${krok} m · scena ${Math.round(tScena)} ms · FM 3 grupy ${Math.round(tPole)} ms · ` +
+    `komórki 6 stacji ${Math.round(tSw)} ms\n  FM punktów ≥ ${p.slychac}: ${ponad(p.slychac)}, ≥ ${p.granica}: ${ponad(p.granica)} z ${n * n}; 1800 MHz par punkt×stacja w zasięgu: ${zas}`);
+}
 if (process.argv[2]) writeFileSync(process.argv[2], JSON.stringify(wynik, null, 1));
