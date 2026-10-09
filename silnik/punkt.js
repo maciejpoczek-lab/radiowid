@@ -14,6 +14,14 @@ export const PASMA_MHZ = {
 };
 export const PROGI_DB = { czysta: 3, czesciowo: 15 };   // nadwyżka < 3 dB: czysta; < 15 dB: częściowo; reszta: zasłonięta
 export const H_STACJI_ZALOZENIE = 35;                   // gdy nie znamy wysokości anteny (rejestr UKE jej nie ma)
+// Granica zasięgu [dB całkowitej straty drogi: wolna przestrzeń + przeszkody], od której telefon traci łączność (decyzja Maćka
+// 2026-10-09). Wspólne 135 dB dotąd = koniec poświaty dla wszystkich pasm. Częstotliwość jest już w stracie (wolna przestrzeń
+// 20 log f, dyfrakcja, korony), więc tu tylko to, czego tor fali nie zawiera - sprzęt po obu stronach, zwykle uplink:
+// 700-900 MHz -1 dB (mniejszy zysk anten stacji), 1800-2600 punkt odniesienia, 3600 MHz -3 dB (uplink 5G 3,5 GHz ok. 5 dB
+// gorszy niż 4G 2,6 GHz, z czego ok. 2,6 dB to wolna przestrzeń liczona osobno). Przybliżenie z typowych bilansów łącza, nie pomiar.
+export const GRANICA_DB = (fMHz) => fMHz < 1000 ? 134 : fMHz < 3000 ? 135 : 132;
+export const PROG_MOCNY_DB = 15;                        // zapas co najmniej tyle: mocny; 0..15: słaby; poniżej 0: poza zasięgiem
+export const ocenaZasiegu = (zapas) => zapas >= PROG_MOCNY_DB ? "mocny" : zapas >= 0 ? "slaby" : "poza";
 
 export function ocena(nadDb) {
   return nadDb < PROGI_DB.czysta ? "czysta" : nadDb < PROGI_DB.czesciowo ? "czesciowo" : "zaslonieta";
@@ -34,8 +42,9 @@ export function widokZPunktu(punkt, stacje, scena, { hRx = 1.5, gruntPunktu } = 
     let najgorsza = -Infinity, najlepsza = Infinity;
     for (const p of s.pasma) {
       const f = PASMA_MHZ[p]; if (!f) continue;
-      const nad = stratyLaczone(odb, T, geo, f, { rozpraszanie: true }).nad[0];
-      pasma[p] = { mhz: f, nadwyzka_db: Math.round(nad * 10) / 10, ocena: ocena(nad) };
+      const { nad: [nad], L: [L] } = stratyLaczone(odb, T, geo, f, { rozpraszanie: true });
+      pasma[p] = { mhz: f, nadwyzka_db: Math.round(nad * 10) / 10, ocena: ocena(nad), strata_db: Math.round(L * 10) / 10,
+                   zapas_db: Math.round((GRANICA_DB(f) - L) * 10) / 10 };
       najgorsza = Math.max(najgorsza, nad); najlepsza = Math.min(najlepsza, nad);
     }
     const dx = s.x - punkt.x, dy = s.y - punkt.y;
