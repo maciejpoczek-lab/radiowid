@@ -10,6 +10,9 @@ MAPA="$(cd "$(dirname "$0")/.." && pwd)"; V="$MAPA/dane/paczki/v1"
 CEL="$SERWER:$SERWER_KATALOG/dane/paczki/v1/"
 ZAMEK="$MAPA/.paczki-rano.lock"; mkdir "$ZAMEK" 2>/dev/null || { echo "$(date '+%F %T') juz dziala (zamek $ZAMEK)"; exit 0; }; trap 'rmdir "$ZAMEK"' EXIT
 echo "=== $(date '+%F %T') start"
+# Mac budzi sie o 07:45 bez gotowej sieci (Tailscale): czekaj na kolejke (20 prob co 30 s, do ~15 min) zamiast padac; zerwane polaczenie rsync nie wisi (2026-10-09: 33 min)
+export RSYNC_RSH="ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+for i in $(seq 20); do ssh -n -o ConnectTimeout=20 "$KOLEJKA" true 2>/dev/null && break; [ "$i" = 20 ] && { echo "$(date '+%F %T') BLAD: $KOLEJKA nie odpowiada po 20 probach"; exit 1; }; sleep 30; done
 przed="$(cat "$V/lista.json" 2>/dev/null)"
 if ! "$MAPA/przygotuj/paczki-na-strone.sh"; then echo "$(date '+%F %T') BLAD: paczki-na-strone.sh"; exit 1; fi
 po="$(cat "$V/lista.json")"
