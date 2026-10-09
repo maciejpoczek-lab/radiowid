@@ -5,7 +5,7 @@
 // Rozrzut K między punktami = błąd modelu; mediana K w danym otoczeniu wobec innych = przesunięcie do poprawienia.
 // Telefon w budynku traci 10-20 dB (Korkowa 35, 3,6 GHz: 14 dB) - takie punkty oznacz kolumną "wewnatrz" albo nie zbieraj.
 // Pomiary to trasy właściciela telefonu: trzymaj je POZA repo (~/dev/showreel-2/pomiary/), do gita idzie tylko ten skrypt.
-// Uzycie: node weryfikacja/kalibracja.mjs <dziennik.csv> [--operator P4|Orange|T-Mobile|Polkomtel] [--siatka 50] [--max 300] [--wynik plik.json]
+// Uzycie: node weryfikacja/kalibracja.mjs <dziennik.csv albo pomiar_*.jsonl> [--wiek 10] [--dokladnosc 30] [--operator P4|Orange|T-Mobile|Polkomtel] [--siatka 50] [--max 300] [--wynik plik.json]
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,8 +15,27 @@ const arg = process.argv.slice(2), opcja = (n, d) => { const i = arg.indexOf(`--
 const plik = arg.find((a, i) => !a.startsWith("--") && !arg[i - 1]?.startsWith("--"));
 if (!plik) { console.error("podaj plik CSV z pomiarami"); process.exit(2); }
 
+// --- .jsonl z weryfikacja/telefon-pomiar.sh (Termux:API) -> te same wiersze co CSV. Bierze tylko komórki zarejestrowane
+// (u sąsiadów telefony MediaTek podają pasmo stale [1]) i tylko świeżą pozycję GPS: elapsedMs = wiek poprawki,
+// --wiek [s] domyślnie 10, --dokladnosc [m] domyślnie 30 (w budynku "-r last" oddaje poprawkę sprzed wejścia).
+// Pola NR (5G) wg Termux:API niezweryfikowane na prawdziwym odczycie - stąd kilka nazw naraz.
+function zJsonl(t) {
+  const wiek = +opcja("wiek", 10) * 1000, dokl = +opcja("dokladnosc", 30), w = ["lat;lon;rsrp;sinr;tech;band;pci;mnc"];
+  for (const l of t.split(/\r?\n/)) {
+    if (!l.trim()) continue;
+    let r; try { r = JSON.parse(l); } catch { continue; }
+    const g = r.loc, dobra = g && g.provider === "gps" && g.elapsedMs <= wiek && g.accuracy <= dokl;
+    for (const c of (r.cells ?? []).filter((c) => c.registered)) {
+      const rsrp = c.rsrp ?? c.ss_rsrp ?? c.ssRsrp ?? c.csi_rsrp, sinr = c.rssnr ?? c.ss_sinr ?? c.ssSinr ?? c.sinr ?? "";
+      w.push([dobra ? g.latitude : "", dobra ? g.longitude : "", rsrp ?? "", sinr, c.type, (c.bands ?? [])[0] ?? "", c.pci ?? "", c.mnc ?? ""].join(";"));
+    }
+  }
+  return w.join("\n");
+}
+
 // --- CSV: separator z nagłówka, kolumny po nazwach (bez wielkości liter i znaków innych niż litery/cyfry) ---
-const tekst = readFileSync(plik, "utf8").replace(/^﻿/, ""), wiersze = tekst.split(/\r?\n/).filter((l) => l.trim());
+const surowy = readFileSync(plik, "utf8").replace(/^﻿/, "");
+const tekst = /\.jsonl$/i.test(plik) ? zJsonl(surowy) : surowy, wiersze = tekst.split(/\r?\n/).filter((l) => l.trim());
 const sep = [";", "\t", ","].find((s) => wiersze[0].includes(s)) ?? ",";
 const pola = (l) => l.split(sep).map((v) => v.trim().replace(/^"(.*)"$/, "$1"));
 const nag = pola(wiersze[0]).map((n) => n.toLowerCase().replace(/[^a-z0-9]/g, ""));
