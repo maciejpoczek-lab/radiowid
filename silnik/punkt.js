@@ -42,8 +42,8 @@ export function widokZPunktu(punkt, stacje, scena, { hRx = 1.5, gruntPunktu } = 
     let najgorsza = -Infinity, najlepsza = Infinity;
     for (const p of s.pasma) {
       const f = PASMA_MHZ[p]; if (!f) continue;
-      const { nad: [nad], L: [L] } = stratyLaczone(odb, T, geo, f, { rozpraszanie: true });
-      pasma[p] = { mhz: f, nadwyzka_db: Math.round(nad * 10) / 10, ocena: ocena(nad), strata_db: Math.round(L * 10) / 10,
+      const { nad: [nad], L: [L], snop: [sn] } = stratyLaczone(odb, T, geo, f, { rozpraszanie: true });
+      pasma[p] = { mhz: f, nadwyzka_db: Math.round(nad * 10) / 10, ocena: ocena(nad), strata_db: Math.round(L * 10) / 10, snop_db: Math.round(sn * 10) / 10,
                    zapas_db: Math.round((GRANICA_DB(f) - L) * 10) / 10 };
       najgorsza = Math.max(najgorsza, nad); najlepsza = Math.min(najlepsza, nad);
     }

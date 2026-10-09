@@ -58,6 +58,25 @@ for (const [nazwa, lat, lon] of PUNKTY) {
   for (const t of ["fm", "dab", "dvbt"]) console.log(`  ${t.padEnd(4)}: słychać ${ile(t, "slychac")} · granica ${ile(t, "granica")} · nie ${ile(t, "nie") + w.reszta[t]}`);
   for (const p of rtv.filter((p) => p.typ === "fm").slice(0, 3)) console.log(`    fm ${p.E.toFixed(1)} dBµV/m ${p.ocena} ${p.program} (${p.stacja}, ${p.km} km)`);
 }
+// cień pod masztem: jedna stacja (Brajniki, T-Mobile; kemping Camp 69 Binduga - obserwacja Maćka: pod masztem brak 5G),
+// punkty w 4 kierunkach co 90° w odległościach od 25 m do 2 km; mediana z kierunków (teren różny w każdą stronę)
+{
+  const s = stacje.find((s) => /^Brajniki, 46\/5/.test(s.adres)), cien = [];
+  console.log(`\ncień pod masztem: ${s.adres}, antena ${s.h_ant ?? "35 (założona)"} m, pasma ${s.pasma.join(" ")}`);
+  for (const d of [25, 50, 100, 150, 200, 300, 500, 1000, 2000]) {
+    const r = [];
+    for (const az of [0, 90, 180, 270]) {
+      const a = az * Math.PI / 180, w = await zlec({ typ: "punkt", P: { x: s.x + d * Math.sin(a), y: s.y + d * Math.cos(a) }, hRx: 1.5, stacje: [s] });
+      if (w.blad) throw new Error(`cień ${d} m: ${w.blad}`);
+      r.push(w.stacje[0].pasma_wynik);
+    }
+    const med = (p, k) => { const v = r.map((x) => x[p]?.[k]).filter((v) => v != null).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
+    const wiersz = { d, ...Object.fromEntries(["lte800", "lte1800", "5g2100", "lte2600"].map((p) => [p, { strata: med(p, "strata_db"), zapas: med(p, "zapas_db"), snop: med(p, "snop_db"), nad: med(p, "nadwyzka_db") }])) };
+    cien.push(wiersz);
+    console.log(`  ${String(d).padStart(5)} m: ` + ["lte800", "lte1800", "5g2100", "lte2600"].map((p) => `${p} strata ${wiersz[p].strata} zapas ${wiersz[p].zapas} snop ${wiersz[p].snop ?? "-"}`).join(" | "));
+  }
+  wynik.cien_pod_masztem = { adres: s.adres, h_ant: s.h_ant ?? null, punkty: cien };
+}
 // mapa widoku (jak telefon/poziomy.html, przelicz): scena poziomu, 360 × 360 punktów, radio FM - 3 grupy najmocniejsze
 // w środku, komórki - 6 najbliższych stacji; czas liczenia i ile punktów ponad progi
 const { PROGI_RTV, progiRtv } = await import("../silnik/punkt.js"), { POZIOMY, poziomWidoku } = await import("../silnik/paczka.js");

@@ -119,15 +119,29 @@ export function krawedzWtorna(p, nu2, q, alfa) {
   const Tc = 12 - 20 * Math.log10(2 / (1 - alfa / Math.PI) * (q / p) ** (2 * p));
   return Math.max(0, J(nu2) - Tc);
 }
-export function stratyLaczone(odb, T, geo, fMHz, { rozpraszanie = false, wtorne = true } = {}) {
+// Pionowy snop anteny sektorowej stacji (3GPP TR 36.814 v9.2.0, tab. A.2.1.1-2, makrokomórka, antena o stałej
+// charakterystyce): A_V = -min(12 ((theta - theta_tilt) / theta_3dB)^2, SLA_V), theta_3dB = 10°, SLA_V = 20 dB; theta - kąt
+// w dół od poziomu anteny do odbiornika. Pochylenia rejestr UKE nie podaje, TR 36.814 też go nie ustala („may be set to fit
+// other RRM techniques"); do kalibracji podaje 15° (case 1, stacje co 500 m) i 6° (case 3, co 1732 m), ITU RMa 6°, UMa 12°.
+// Bierzemy 6° dla każdej stacji - typowe, NIE ustawienie konkretnej anteny. Pod masztem (kąt w dół duży) do 20 dB słabiej;
+// daleko (kąt ok. 0) ok. 4 dB mniej niż w osi snopa. Charakterystyki poziomej nie ma (nie znamy azymutów sektorów),
+// krzywizna Ziemi pominięta (10 km: 0,03°). Doliczane tylko do L (moc u odbiornika), nie do nad - nad mówi o zasłonie.
+export const SNOP = { szerokosc: 10, listki: 20, pochylenie: 6 };
+export function tlumienieSnopa(dz, D, { szerokosc, listki, pochylenie } = SNOP) {   // dz = antena - odbiornik [m], D poziomo
+  const kat = Math.atan2(dz, D) * 180 / Math.PI - pochylenie;
+  return Math.min(12 * (kat / szerokosc) ** 2, listki);
+}
+// snop: null - bez pionowej charakterystyki (porównania z wzorcami Pythona, które jej nie znają)
+export function stratyLaczone(odb, T, geo, fMHz, { rozpraszanie = false, wtorne = true, snop = SNOP } = {}) {
   const { D, umax, kor, bud, wt, k0 = 0 } = geo, n = D.length, Z = odb.Z;
-  const L = new Float32Array(n), nad = new Float32Array(n), sl = Math.sqrt(C_MHZ / fMHz);
+  const L = new Float32Array(n), nad = new Float32Array(n), sn = new Float32Array(n), sl = Math.sqrt(C_MHZ / fMHz);
   for (let k = 0; k < n; k++) {
     const dz = T[2] - Z[k0 + k], r = Math.sqrt(D[k] * D[k] + dz * dz), p = umax[k] / sl;
     let a = J(p) + weissberger(fMHz, kor[k]);
     if (wt && wtorne) for (let st = 0; st < 2; st++) a += krawedzWtorna(p, wt.u2[st][k] / sl, wt.uq[st][k] / sl, wt.al[st][k]);
     if (rozpraszanie && bud?.[k]) a = -10 * Math.log10(10 ** (-a / 10) + 10 ** (-nadwyzkaRozproszenia(r, fMHz) / 10));
-    nad[k] = a; L[k] = wolnaPrzestrzen(r, fMHz) + a;
+    if (snop) sn[k] = tlumienieSnopa(dz, D[k], snop);
+    nad[k] = a; L[k] = wolnaPrzestrzen(r, fMHz) + a + sn[k];
   }
-  return { L, nad };
+  return { L, nad, snop: sn };
 }
