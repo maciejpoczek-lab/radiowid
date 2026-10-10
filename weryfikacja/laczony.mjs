@@ -47,8 +47,8 @@ const ms = (t0) => (performance.now() - t0).toFixed(0) + " ms";
     const czas = ms(t0);
     const ref = geometriaMiasto(scena, T, { hRx: meta.H_RX, podstawaKorony: meta.PODSTAWA_KORONY, smaxGeom: meta.smaxGeom });
     for (const fq of f) {
-      const { L, nad } = stratyLaczone(odb, T, geo, fq, { wtorne: false, snop: null });   // wzorce Pythona: jedna krawedz, bez snopa
-      rozklad(`${nazwa}_${fq}`, stratyLaczone(odb, T, geo, fq, { snop: null }).L, L);
+      const { L, nad } = stratyLaczone(odb, T, geo, fq, { wtorne: false, snop: null, korony: "weissberger" });   // wzorce Pythona: jedna krawedz, bez snopa, Weissberger
+      rozklad(`${nazwa}_${fq}`, stratyLaczone(odb, T, geo, fq, { snop: null, korony: "weissberger" }).L, L);
       const r = stratyMiasto(scena, T, ref, fq, { hRx: meta.H_RX });
       roznica(`${nazwa}_${fq} L vs silnik miasta JS (${czas})`, L, r.L, 0);
       roznica(`${nazwa}_${fq} L vs fala.py`, L, t[`${nazwa}_${fq}_L`], 1e-4);

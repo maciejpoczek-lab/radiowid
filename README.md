@@ -15,7 +15,7 @@ All heavy lifting happens in two places:
 
 | Part | What it does |
 |---|---|
-| `silnik/` | Propagation engine (plain ES modules, browser and Node). Knife-edge diffraction over a terrain + surface profile, foliage loss (Weissberger), optional wall scattering (ITU-R P.1411 §4.2.1), broadcast field strength from ITU-R P.1546 curves. |
+| `silnik/` | Propagation engine (plain ES modules, browser and Node). Knife-edge diffraction over a terrain + surface profile, foliage loss (ITU-R P.833 §2.1 with saturation; Weissberger kept for the Python reference checks), optional wall scattering (ITU-R P.1411 §4.2.1), broadcast field strength from ITU-R P.1546 curves. |
 | `telefon/poziomy.html` | The page served at radio-wid.pl. Zoom levels by grid size: 4 m (buildings and trees), 16 m, 100 m (terrain only), 1 km (country). |
 | `przygotuj/` | Data pipeline (Python + numpy, no GDAL). Open data → 20 × 20 km packs on a national grid (EPSG:2180) → `.pak` files. |
 | `przygotuj/kolejka_paczek.py` | Night queue on a compute host: download sheets → buildings → pack → delete raw tiles. One pack takes about 18 min, mostly downloading. |

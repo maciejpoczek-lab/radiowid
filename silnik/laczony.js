@@ -14,7 +14,7 @@
 // wtorne: false - bez krawedzi wtornych (wt = null; np. radio/TV, ktore bierze z geometrii tylko umax).
 // bud[k] = 1, gdy krawedz dominujaca to budynek (komorka miasta z dachem co najmniej BUDYNEK_M nad gruntem) - tylko wtedy
 // stratyLaczone dodaje rozpraszanie miejskie P.1411; za wzgorzem, za drzewami i na wsi go nie ma.
-import { J, weissberger, wolnaPrzestrzen, C_MHZ } from "./silnik.js";
+import { J, weissberger, koronyP833, wolnaPrzestrzen, C_MHZ } from "./silnik.js";
 
 export const BUDYNEK_M = 2;                           // dach nizej niz tyle nad gruntem (szopa, murek, szum NMPT) - nie budynek
 
@@ -132,12 +132,14 @@ export function tlumienieSnopa(dz, D, { szerokosc, listki, pochylenie } = SNOP) 
   return Math.min(12 * (kat / szerokosc) ** 2, listki);
 }
 // snop: null - bez pionowej charakterystyki (porównania z wzorcami Pythona, które jej nie znają)
-export function stratyLaczone(odb, T, geo, fMHz, { rozpraszanie = false, wtorne = true, snop = SNOP } = {}) {
+// korony: "p833" (domyślnie, ITU-R P.833 z pułapem - silnik.js koronyP833) albo "weissberger" (wzorce Pythona i silnik miasta JS)
+export function stratyLaczone(odb, T, geo, fMHz, { rozpraszanie = false, wtorne = true, snop = SNOP, korony = "p833" } = {}) {
   const { D, umax, kor, bud, wt, k0 = 0 } = geo, n = D.length, Z = odb.Z;
   const L = new Float32Array(n), nad = new Float32Array(n), sn = new Float32Array(n), sl = Math.sqrt(C_MHZ / fMHz);
+  const strataKoron = korony === "weissberger" ? weissberger : koronyP833;
   for (let k = 0; k < n; k++) {
     const dz = T[2] - Z[k0 + k], r = Math.sqrt(D[k] * D[k] + dz * dz), p = umax[k] / sl;
-    let a = J(p) + weissberger(fMHz, kor[k]);
+    let a = J(p) + strataKoron(fMHz, kor[k]);
     if (wt && wtorne) for (let st = 0; st < 2; st++) a += krawedzWtorna(p, wt.u2[st][k] / sl, wt.uq[st][k] / sl, wt.al[st][k]);
     if (rozpraszanie && bud?.[k]) a = -10 * Math.log10(10 ** (-a / 10) + 10 ** (-nadwyzkaRozproszenia(r, fMHz) / 10));
     if (snop) sn[k] = tlumienieSnopa(dz, D[k], snop);
