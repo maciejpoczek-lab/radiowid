@@ -58,6 +58,10 @@ python3 -m http.server 8794 --directory _telefon
 
 The site sets no cookies and the web server does not log map requests. A position from the GPS or the address search is used only inside the browser. Visits are counted with a self-hosted, cookieless Umami instance, configured to drop everything after `#` (the map position) and the query string.
 
+## How it was built
+
+Direction, design decisions and testing are the author's. Most of the code was written by Claude (Claude Code, Anthropic) under his direction. Results are checked against the author's own measurements, but calibration rests on a small number of readings, so treat the output as a simulation.
+
 ## Licence
 
 Copyright © 2026 Maciej Poczek. Licensed under the GNU Affero General Public License v3.0 — see [LICENSE](LICENSE).
@@ -66,4 +70,4 @@ Data keep their own licences (table above).
 
 ---
 
-**PL:** Mapa zasięgu radia, telewizji i sieci komórkowych dla całej Polski, liczona w przeglądarce na terenie, budynkach i drzewach. Kod na licencji AGPL-3.0. Dane (GUGiK, UKE, Copernicus) nie są w repozytorium. Skrypty z `przygotuj/` pobierają je i przetwarzają.
+**PL:** Mapa zasięgu radia, telewizji i sieci komórkowych dla całej Polski, liczona w przeglądarce na terenie, budynkach i drzewach. Większość kodu napisał Claude (Claude Code) pod kierunkiem autora. Kod na licencji AGPL-3.0. Dane (GUGiK, UKE, Copernicus) nie są w repozytorium. Skrypty z `przygotuj/` pobierają je i przetwarzają.
