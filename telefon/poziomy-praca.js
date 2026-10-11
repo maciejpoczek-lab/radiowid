@@ -3,9 +3,9 @@
 //   {typ: "swiatlo", siatka, hRx, S, f[]}    -> straty L [dB] w punktach siatki dla każdej częstotliwości (stacja S = {x, y, h})
 //   {typ: "pole", siatka, hRx, gi, rodzaj, program} -> natężenie E [dBµV/m] grupy nadajników radia/TV gi
 //   {typ: "grupy", P, hRx, rodzaj}           -> grupy radia/TV najmocniejsze w punkcie P (zwykle środek widoku)
-//   {typ: "punkt", P, hRx, stacje[]}         -> stacje komórkowe z kierunkiem i oceną + radio/TV w punkcie (silnik/punkt.js) + wysokości
+//   {typ: "punkt", P, hRx, zysk, stacje[]}   -> stacje komórkowe z kierunkiem i oceną + radio/TV w punkcie (silnik/punkt.js) + wysokości
 //                                               budynków wokół P (dach, punkt orientacyjny); scena najdokładniejsza: ulica 4 m w pasie, poza nim sam teren
-//   {typ: "wysokosci", P, hs[], rodzaj}      -> radio/TV danego rodzaju w punkcie dla każdej wysokości anteny z hs (od ilu metrów jest odbiór)
+//   {typ: "wysokosci", P, hs[], rodzaj, zysk} -> radio/TV danego rodzaju w punkcie dla każdej wysokości anteny z hs (od ilu metrów jest odbiór)
 // błąd w dowolnym zadaniu -> {id, blad}. siatka = {x0, y1, n, krok}: n × n punktów w środkach kratek krok × krok. Wątek nie wysyła żadnych zapytań poza plikami danych.
 import { geometriaLaczona, stratyLaczone } from "../silnik/laczony.js";
 import { probnikDolek } from "../silnik/teren-dolek.js";
@@ -126,8 +126,8 @@ async function obsluz(z) {
     const stacje = widokZPunktu(z.P, z.stacje, scn, op);
     // radio/TV: cała Polska daje tysiące programów - do strony tylko te w pobliżu progu, reszta jako liczba
     const fm = [], reszta = { fm: 0, dab: 0, dvbt: 0 };
-    for (const p of fmZPunktu(z.P, baza.fm, scn, op)) {
-      if (p.E_dBuVm < progiRtv(p.typ, otoczenie).granica - 20) { reszta[p.typ]++; continue; }
+    for (const p of fmZPunktu(z.P, baza.fm, scn, { ...op, zysk: z.zysk ?? 0 })) {
+      if (p.E_dBuVm < progiRtv(p.typ, otoczenie, z.zysk ?? 0).granica - 20) { reszta[p.typ]++; continue; }
       const { typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena, snop_db } = p;
       fm.push({ typ, program, kanal, mhz, stacja, pol, gi, km, azymut, E_dBuVm, zaslona_db, krawedz, ocena, snop_db });
     }
@@ -137,7 +137,7 @@ async function obsluz(z) {
     postMessage({ id: z.id, stacje, fm, reszta, dach, otoczenie, scena: s ? "ulica" : "teren" }, dach ? [dach.H.buffer] : []);
   } else if (z.typ === "wysokosci") {
     const s = await scenaPunktu(z.P), g = gruntW(s, z.P), fm = tylko(z.rodzaj), scn = sc(s);
-    postMessage({ id: z.id, wys: z.hs.map((h) => ({ h, fm: fmZPunktu(z.P, fm, scn, { hRx: h, gruntPunktu: g, otoczenie: baza.otoczenie(z.P.x, z.P.y) })
+    postMessage({ id: z.id, wys: z.hs.map((h) => ({ h, fm: fmZPunktu(z.P, fm, scn, { hRx: h, gruntPunktu: g, otoczenie: baza.otoczenie(z.P.x, z.P.y), zysk: z.zysk ?? 0 })
       .filter((p) => p.ocena !== "nie").map(({ gi, program, ocena }) => ({ gi, program, ocena })) })) });
   }
 }

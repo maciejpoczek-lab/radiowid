@@ -75,10 +75,20 @@ export function widokZPunktu(punkt, stacje, scena, { hRx = 1.5, gruntPunktu } = 
 export const PROGI_FM_OTOCZENIE = [
   { nazwa: "wieś", slychac: 54, granica: 48 }, { nazwa: "miasto", slychac: 66, granica: 60 }, { nazwa: "duże miasto", slychac: 74, granica: 70 }];
 export const PROGI_FM = PROGI_FM_OTOCZENIE[1];
-// progi per rodzaj [dBµV/m] (klucz "slychac" = dobry odbiór): DAB+ pasmo III - ok. 50 przenośny, 38 na zewnątrz (EBU, przybliżenie);
-// DVB-T pasmo IV/V - 56 antena dachowa (plan GE06, 64-QAM), 48 granica. To przybliżenia do oceny, nie normy odbioru.
-export const PROGI_RTV = { fm: PROGI_FM, dab: { slychac: 50, granica: 38 }, dvbt: { slychac: 56, granica: 48 } };
-export const progiRtv = (typ, otoczenie) => typ === "fm" ? PROGI_FM_OTOCZENIE[otoczenie] ?? PROGI_FM : PROGI_RTV[typ] ?? PROGI_FM;
+// progi per rodzaj [dBµV/m] (klucz "slychac" = dobry odbiór): DAB+ pasmo III - ITU-R BS.2214-4 tabl. 117, odbiór przenośny
+// na zewnątrz (PO, antena -8 dBd): 43 = 95% miejsc („good”), 38 = 70% („acceptable”, tabl. 38,5); EBU Tech 3391 powtarza tę
+// tabelę. Źródła podają pole na 1,5 m, ale to pole potrzebne PRZY antenie - silnik liczy je na wysokości hRx, więc porównanie
+// nie wymaga poprawki wysokości. DVB-T pasmo IV/V - 56 antena dachowa (plan GE06, 64-QAM), 48 granica. Przybliżenia, nie normy.
+export const PROGI_RTV = { fm: PROGI_FM, dab: { slychac: 43, granica: 38 }, dvbt: { slychac: 56, granica: 48 } };
+// zysk [dB] - zysk anteny odbiorczej WZGLĘDEM anteny, dla której są progi (suwak; 0 = progi jak wyżej): 1 dB zysku obniża
+// potrzebne natężenie pola o 1 dB (wzór planistyczny DAB/DVB-T: E_min maleje o zysk anteny, ITU-R BS.2214 tabl. 117, BT.2254).
+// Antena odniesienia różni się między rodzajami (DVB-T: dachowa 10-12 dBd, BT.2036 tabl. 9; DAB+: przenośna ok. -8 dBd,
+// BS.2214 tabl. 117; FM: BS.412 tabl. 1 jej nie podaje), dlatego suwak jest względny, a nie w dBi. FM w zakłóceniach
+// przemysłowych: zysk wzmacnia też zakłócenia z kierunku anteny - przesunięcie 1:1 jest tam górną granicą.
+export const progiRtv = (typ, otoczenie, zysk = 0) => {
+  const p = typ === "fm" ? PROGI_FM_OTOCZENIE[otoczenie] ?? PROGI_FM : PROGI_RTV[typ] ?? PROGI_FM;
+  return zysk ? { ...p, slychac: p.slychac - zysk, granica: p.granica - zysk } : p;
+};
 // Kąt prześwitu terenu [°] (P.1546 §11, tcaCalc.m wzorca): największy kąt wzniesienia od anteny odbiorczej (z0 n.p.m.) do
 // terenu w stronę nadajnika (tx, ty), do 16 km i nie za nadajnik, bez krzywizny Ziemi - MINUS kąt wzniesienia anteny nadajnika
 // (tz, z krzywizną 4/3, gdy dodatni). Odstępstwo od P.1546-6 (kąt bezwzględny) na rzecz P.1546-2 (wzorzec ma je w komentarzu
@@ -114,7 +124,7 @@ function tlumienieAnteny(tl, az) {                    // tl: 36 wartości co 10�
 }
 
 // fm: {meta: {grupy}} z dane/rtv.json (przygotuj/fm.mjs); miasto: siatka kwadratu
-export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu, otoczenie } = {}) {
+export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu, otoczenie, zysk = 0 } = {}) {   // zysk: progiRtv
   const { miasto = null, teren = null, R_E = 8.5e6 } = scena;
   const z0 = (gruntPunktu ?? teren.wysokosc(punkt.x, punkt.y)) + hRx, zt = teren ? teren.wysokosc(punkt.x, punkt.y) + hRx : null;
   const odb = { xs: Float64Array.of(punkt.x), ys: Float64Array.of(punkt.y), Z: Float32Array.of(z0) };
@@ -134,7 +144,7 @@ export function fmZPunktu(punkt, fm, scena, { hRx = 1.5, gruntPunktu, otoczenie 
       wynik.push({ ...p, typ: p.typ ?? "fm", gi, km: dkm, azymut: Math.round((azOdNadajnika + 180) % 360), hant: g.hant, h1: Math.round(h1),
         tca: Math.round(tca * 100) / 100, teren_db: Math.round(-pt * 10) / 10, snop_db: Math.round(pion * 10) / 10,
         E_dBuVm: Math.round(E * 10) / 10, zaslona_db: Math.round(-popr * 10) / 10, krawedz: zaslona > 0 && 6.03 - zaslona < popr + 1e-9 ? "zabudowa" : "antena nisko",
-        ocena: ((pr) => E >= pr.slychac ? "slychac" : E >= pr.granica ? "granica" : "nie")(progiRtv(p.typ ?? "fm", otoczenie)) });
+        ocena: ((pr) => E >= pr.slychac ? "slychac" : E >= pr.granica ? "granica" : "nie")(progiRtv(p.typ ?? "fm", otoczenie, zysk)) });
     }
   });
   return wynik.sort((a, b) => b.E_dBuVm - a.E_dBuVm);

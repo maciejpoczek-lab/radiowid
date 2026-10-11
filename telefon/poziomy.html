@@ -11,7 +11,7 @@
 <meta name="description" content="Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych. Symulacja dla całej Polski.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="RadioWid">
-<meta property="og:title" content="RadioWid">
+<meta property="og:title" content="RadioWid — gdzie skierować antenę">
 <meta property="og:description" content="Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych.">
 <meta property="og:url" content="https://radio-wid.pl/">
 <meta property="og:image" content="https://radio-wid.pl/karta-udostepniania.jpg">
@@ -20,7 +20,20 @@
 <meta property="og:image:alt" content="Znak RadioWid i hasło: Zobacz, skąd przychodzi sygnał radia, telewizji i sieci komórkowych.">
 <meta property="og:locale" content="pl_PL">
 <meta name="twitter:card" content="summary_large_image">
-<title>RadioWid — skąd przychodzi sygnał</title>
+<title>RadioWid — gdzie skierować antenę: zasięg telewizji, radia i sieci komórkowych</title>
+<link rel="canonical" href="https://radio-wid.pl/">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "WebApplication",
+ "name": "RadioWid", "url": "https://radio-wid.pl/", "inLanguage": "pl",
+ "description": "Symulacja dla całej Polski: skąd przychodzi sygnał radia, telewizji (DVB-T) i sieci komórkowych (LTE, 5G) i gdzie skierować antenę. Liczy natężenie pola według ITU-R P.1546-6 z wykazu nadajników UKE, terenu, budynków i drzew z GUGiK. To symulacja, nie pomiar.",
+ "applicationCategory": "UtilitiesApplication", "operatingSystem": "Przeglądarka internetowa",
+ "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "PLN"},
+ "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+ "sameAs": ["https://github.com/maciejpoczek-lab/radiowid"],
+ "author": {"@type": "Person", "name": "Maciej Poczek", "url": "https://poczek.pl/", "sameAs": ["https://poczek.pl/", "https://videomajster.pl/"]},
+ "areaServed": {"@type": "Country", "name": "Polska"},
+ "image": "https://radio-wid.pl/karta-udostepniania.jpg"}
+</script>
 <style>
   /* Poziomy przybliżenia (docs/projekt-paczek-20km.md §7–8) w całej Polsce + punkt z kierunkiem anteny (przeniesione z punkt.html).
      Układ jak punkt.html: na szerokim ekranie panel z lewej, na telefonie arkusz od dołu z zakładkami. Jeden nocny motyw. */
@@ -67,7 +80,8 @@
   /* antena odbiorcza */
   .antena { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; }
   #hrxTekst { font: 600 15px/1 var(--font-liczby); font-variant-numeric: tabular-nums; }
-  #hrx { grid-column: 1 / -1; width: 100%; accent-color: var(--akcent); margin: 4px 0 0; }
+  #hrx, #zysk { grid-column: 1 / -1; width: 100%; accent-color: var(--akcent); margin: 4px 0 0; }
+  #zyskTekst { font: 600 15px/1 var(--font-liczby); font-variant-numeric: tabular-nums; }
   .skala-h { grid-column: 1 / -1; position: relative; height: 16px; font: 10px/1 var(--font-liczby); color: var(--przygaszony); }
   .skala-h span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   .skala-h span::before { content: ""; position: absolute; left: 50%; top: -6px; width: 1px; height: 4px; background: var(--przygaszony); }
@@ -161,10 +175,17 @@
     <p id="info" data-z="wynik"></p>
     <div class="szukaj" data-z="miejsce"><input id="szukaj" type="search" placeholder="Miejscowość albo adres: ulica, numer, miejscowość" autocomplete="off" aria-label="Szukaj miejsca">
       <div id="podpowiedzi"></div></div>
+    <p class="maly" data-z="miejsce">Gotowe kierunki anten dla <a href="/miasta/">50 największych miast</a> i <a href="/nadajniki/">spis nadajników</a>.</p>
     <div class="grupa antena" data-z="miejsce">
       <label class="podpis" for="hrx">Wysokość anteny</label><b id="hrxTekst">10 m</b>
       <input id="hrx" type="range" min="1.5" max="40" step="0.5" value="10">
       <div class="skala-h" aria-hidden="true"><span style="left:0;transform:none">1,5 m</span><span style="left:22.1%">10 m · dach</span><span style="right:0;left:auto;transform:none">40 m</span></div>
+    </div>
+    <div class="grupa antena" id="grupaZysk" data-z="miejsce">
+      <label class="podpis" for="zysk">Zysk anteny</label><b id="zyskTekst">0 dB</b>
+      <input id="zysk" type="range" min="-10" max="15" step="1" value="0">
+      <div class="skala-h" aria-hidden="true"><span style="left:0;transform:none">−10 dB</span><span style="left:40%">0 · jak w progach</span><span style="right:0;left:auto;transform:none">+15 dB</span></div>
+      <span class="maly" id="zyskOpis" style="grid-column: 1 / -1"></span>
     </div>
     <div id="wskazowka" data-z="miejsce"></div>
     <div id="dach" class="maly" data-z="miejsce"></div>
@@ -195,7 +216,7 @@
       <p class="maly">Przesuwaj palcem, przybliżaj dwoma palcami albo kółkiem; krótkie dotknięcie ustawia punkt. Na ekranie zawsze ok. 360 × 360 punktów liczenia: im dalej, tym grubsza kratka danych
         (ulica 4 m → okolica 16 m → powiat 100 m, sam teren). Kierunki w punkcie liczą się zawsze na najdokładniejszych danych: tam, gdzie są budynki i drzewa (na razie wybrane kwadraty 20 × 20 km, m.in. okolice Garwolina) — kratka 4 m z nimi, gdzie indziej sam teren.
         Trójkąty = nadajniki radia i telewizji (z daleka widać najsilniejsze) i stacje komórkowe wokół punktu (kolor = droga fali).</p>
-      <p class="maly">Radio i telewizja: natężenie pola wg ITU-R P.1546-6 z mocy nadajnika, wysokości masztu nad terenem i charakterystyki anteny; przy antenie poniżej 10 m poprawka z P.1546, w zabudowie z budynków i drzew. Progi w dBµV/m: FM wg ITU-R BS.412, zależnie od zabudowy wokół punktu (więcej zabudowy = więcej zakłóceń) — stereo / mono: wieś 54 / 48, miasto 66 / 60, duże miasto 74 / 70; DAB+ ≥ 50 / 38; DVB-T ≥ 56 / 48 — przybliżenia, nie normy. Tylko polskie nadajniki (wykaz UKE). Pod samym masztem sygnał bywa słabszy niż kawałek dalej, bo anteny świecą płaskim snopem lekko pochylonym w dół — pochylenie przyjmujemy typowe (komórki 6°, radio i telewizja 1°), nie z rejestru, bo rejestr go nie podaje. To nie pomiar.</p>
+      <p class="maly">Radio i telewizja: natężenie pola wg ITU-R P.1546-6 z mocy nadajnika, wysokości masztu nad terenem i charakterystyki anteny; przy antenie poniżej 10 m poprawka z P.1546, w zabudowie z budynków i drzew. Progi w dBµV/m: FM wg ITU-R BS.412, zależnie od zabudowy wokół punktu (więcej zabudowy = więcej zakłóceń) — stereo / mono: wieś 54 / 48, miasto 66 / 60, duże miasto 74 / 70; DAB+ ≥ 43 / 38 (ITU-R BS.2214); DVB-T ≥ 56 / 48 — przybliżenia, nie normy. Suwak „Zysk anteny” przesuwa te progi o ustawioną liczbę decybeli (0 = jak tu). Tylko polskie nadajniki (wykaz UKE). Pod samym masztem sygnał bywa słabszy niż kawałek dalej, bo anteny świecą płaskim snopem lekko pochylonym w dół — pochylenie przyjmujemy typowe (komórki 6°, radio i telewizja 1°), nie z rejestru, bo rejestr go nie podaje. To nie pomiar.</p>
       <p class="maly">Położenie, które oglądasz, wpisany adres i GPS nie wychodzą z telefonu: pobierane są całe pliki (paczki 20 km, teren w kwadratach 100 km, nadajniki całej Polski). Licznik odwiedzin (Umami na serwerze autora, bez ciasteczek) dostaje tylko to, że strona została otwarta — z jakiej przeglądarki, rozmiar ekranu i kraj, bez pozycji mapy.</p>
     </details>
     <section class="grupa" id="dane" data-z="szczegoly">
@@ -203,6 +224,7 @@
       <p class="maly">Dane: Główny Urząd Geodezji i Kartografii (geoportal.gov.pl) — teren, budynki, granice, drogi i adresy; Urząd Komunikacji Elektronicznej — stacje i nadajniki. Dane GUGiK są bezpłatne i do dowolnego wykorzystania; modele 3D budynków na licencji CC BY 4.0. Wszystkie dane przetworzone; wynik to symulacja, nie pomiar.</p>
       <p class="maly" id="zrodla"></p>
       <p class="maly">Kod źródłowy: <a href="https://github.com/maciejpoczek-lab/radiowid" rel="noopener noreferrer" target="_blank">GitHub</a> — licencja AGPL-3.0. Każdy może sprawdzić, jak strona liczy, albo zrobić taką mapę dla swojego kraju.</p>
+      <p class="maly">Autor: <a href="https://poczek.pl/">Maciej Poczek</a> · <a href="/o-projekcie/">O projekcie</a></p>
       <p class="maly" id="kawa" hidden>Strona jest bezpłatna. Jeśli pomogła ustawić antenę — <a id="kawaLink" href="#" rel="noopener noreferrer" target="_blank">postaw kawę</a>: dobrowolny napiwek przez Stripe (BLIK lub karta). To zwykły odnośnik — ta strona nie ładuje żadnych skryptów płatności.</p>
     </section>
     <section class="grupa" id="kontakt" data-z="szczegoly">
@@ -322,8 +344,9 @@ const OBRYS = { x0: 171707, y0: 133223, x1: 861896, y1: 797224 };    // obrys pa
 let start = { E: (OBRYS.x0 + OBRYS.x1) / 2, N: (OBRYS.y0 + OBRYS.y1) / 2, bok: 0 };   // start: cała Polska (bok 0 = dopasuj obrys do widocznej części mapy)
 const MPP_MIN = () => 300 / Math.max(mapa.width, mapa.height),   // najbliżej 300 m na dłuższy bok - widać numery domów
       MPP_MAX = () => 900000 / Math.min(mapa.width, mapa.height);   // cała Polska na krótszym boku
+let punktStartowy = null;                                            // #E,N,km,1: od razu punkt w środku widoku (strony miast, strony/buduj.mjs)
 { const h = location.hash.slice(1).split(",").map(Number);           // #E,N,km: widok startowy (EPSG:2180, bok w km); część po # nie wychodzi z przeglądarki
-  if (h.length === 3 && h.every(Number.isFinite)) start = { E: h[0], N: h[1], bok: h[2] * 1000 }; }
+  if ((h.length === 3 || h.length === 4) && h.every(Number.isFinite)) { start = { E: h[0], N: h[1], bok: h[2] * 1000 }; if (h[3] === 1) punktStartowy = { E: h[0], N: h[1] }; } }
 // skala startowa dopiero przy niezerowej mapie: strona otwarta w ukrytej karcie / ramce 0×0 dostawała mpp = ∞ i liczyła NaN do końca
 const startWidoku = () => {
   if (!start || !mapa.width || !mapa.height) return;
@@ -580,7 +603,7 @@ const podKraju = { cv: obraz(cien(K1G, K1G, K1nx, K1ny, 1000), K1nx, K1ny), x0: 
 let podWidoku = null, swiatlo = null;                               // {cv, x0, y1, kom, nx, ny} - rysowane w swoim miejscu, skalowane przy gestach
 
 // --- wybór rodzaju, sieci, liczby stacji, programu i wysokości anteny
-let rodzaj = RODZAJE[0], hRx = 10, siec = SIECI[0], ileStacji = 3, program = null;   // 3 stacje najbliższe punktu, jak punkt.html (decyzja Maćka 2026-10-07)
+let rodzaj = RODZAJE[0], hRx = 10, zysk = 0, siec = SIECI[0], ileStacji = 3, program = null;   // 3 stacje najbliższe punktu, jak punkt.html (decyzja Maćka 2026-10-07)
 const zeton = (kont, nazwa, zaznaczony, zmiana) => { const l = document.createElement("label"), c = document.createElement("input");
   c.type = "radio"; c.name = kont; c.checked = zaznaczony; c.onchange = zmiana; l.append(c, nazwa); $(kont).append(l); };
 RODZAJE.forEach((r) => zeton("rodzaje", r.nazwa, r === rodzaj, () => {
@@ -605,6 +628,16 @@ const hTekst = (h) => `${String(h).replace(".", ",")} m`;
 const ustawH = (h) => { $("hrx").value = h; hRx = +$("hrx").value; $("hrxTekst").textContent = hTekst(hRx) + " nad gruntem"; opiszDach(); wskazowka(); };
 $("hrx").oninput = () => ustawH(+$("hrx").value);
 $("hrx").onchange = () => { if (P) ustaw(P.x, P.y); else przelicz(); };          // liczy po puszczeniu suwaka
+// zysk anteny odbiorczej [dB] względem anteny, dla której są progi radia/TV (silnik/punkt.js progiRtv): przesuwa progi, nie pole
+const zTekst = (z) => z ? `${z > 0 ? "+" : "−"}${Math.abs(z)} dB` : "0 dB";
+const ODNIESIENIE = {                      // jaką antenę zakładają progi - ze źródeł progów, nie z pamięci (notatka sesyjna 2026-10-10)
+  fm: "0 = progi ITU-R BS.412 (natężenie na 10 m; zalecenie nie podaje zysku anteny). W mieście zysk pomaga mniej, niż pokaże mapa: antena wzmacnia też zakłócenia z urządzeń elektrycznych w swoim kierunku.",
+  dab: "0 = progi zbliżone do odbioru przenośnego (w ITU-R BS.2214 antena odbiornika ok. −8 dB względem dipola). Antena zewnętrzna albo kierunkowa — w prawo.",
+  dvbt: "0 = progi planu dla anteny dachowej (w ITU-R BT.2036 zysk 10–12 dB względem dipola, pasma IV/V). Antena pokojowa albo mała zewnętrzna — w lewo." };
+const opiszZysk = () => { $("zyskTekst").textContent = zTekst(zysk) + (zysk ? (zysk > 0 ? " — progi niżej" : " — progi wyżej") : ""); $("zyskOpis").textContent = ODNIESIENIE[rodzaj.id] ?? ""; };
+const ustawZ = (z) => { $("zysk").value = z; zysk = +$("zysk").value; opiszZysk(); };
+$("zysk").oninput = () => ustawZ(+$("zysk").value);
+$("zysk").onchange = () => { pokazSekcje(); if (P) ustaw(P.x, P.y); else przelicz(); };   // ocena w punkcie liczy wątek - od nowa
 function wskazowka() {                    // radio/TV z anteną niżej niż 10 m: ile sygnału ginie względem wysokości, dla której są progi
   const w = $("wskazowka");
   if (!rodzaj.rtv || hRx >= 10) { w.textContent = rodzaj.id === "dvbt" ? "Telewizję odbiera się anteną na dachu" + (hRx === 10 ? " — suwak ustawiony na 10 m" : "") + ". Zsuń suwak niżej, żeby zobaczyć, co złapie antena na niskim domu albo na balkonie." : ""; return; }
@@ -617,8 +650,9 @@ function pokazSekcje() {
   const rtv = !!rodzaj.rtv, kol = `rgb(${rodzaj.kol.join(",")})`;
   document.documentElement.style.setProperty("--akcent", kol);
   // FM: progi zależą od otoczenia (wieś / miasto / duże miasto), więc skala opisowa zamiast liczb
-  $("skalaOd").textContent = rodzaj.id === "fm" ? "poniżej mono" : rtv ? `${PROGI_RTV[rodzaj.id].granica - 4} dBµV/m` : "koniec zasięgu";
-  $("skalaDo").textContent = rodzaj.id === "fm" ? "stereo z zapasem" : rtv ? `${PROGI_RTV[rodzaj.id].slychac + 4} dBµV/m` : "mocny sygnał";
+  $("skalaOd").textContent = rodzaj.id === "fm" ? "poniżej mono" : rtv ? `${progiRtv(rodzaj.id, null, zysk).granica - 4} dBµV/m` : "koniec zasięgu";
+  $("skalaDo").textContent = rodzaj.id === "fm" ? "stereo z zapasem" : rtv ? `${progiRtv(rodzaj.id, null, zysk).slychac + 4} dBµV/m` : "mocny sygnał";
+  $("grupaZysk").hidden = !rtv; opiszZysk();                  // sieci komórkowe: suwak nie działa (decyzja Maćka w toku)
   GRUPY.forEach((g, b) => { $("pasma").children[b].querySelector(".nazwaGrupy").textContent = nazwaGrupy(g); });
   $("sekcjaStacje").hidden = $("grupaSieci").hidden = rtv; $("grupaProgram").hidden = $("sekcjaFm").hidden = !rtv;
   wskazowka();
@@ -654,7 +688,7 @@ async function przelicz() {
   const kol = rodzaj.rtv ? [rodzaj.kol] : GRUPY.map((g) => barwa(g.f));   // radio/TV: jeden kolor rodzaju; komórki: kolor grupy pasm
   const swiatloNowe = { x0, y1, n, krok, A: kol.map(() => null), kol, mobilne: !rodzaj.rtv, wPasie: m < 100 }, sumy = kol.map(() => null);
   let Kw = null;                           // FM: otoczenie każdego punktu (progi BS.412 wieś / miasto / duże miasto) z wątku
-  const jasnosc = rodzaj.rtv ? (E, q) => { const p = progiRtv(rodzaj.id, Kw?.[q]); return Math.min(Math.max((E - (p.granica - 4)) / (p.slychac - p.granica + 8), 0), 1); }
+  const jasnosc = rodzaj.rtv ? (E, q) => { const p = progiRtv(rodzaj.id, Kw?.[q], zysk); return Math.min(Math.max((E - (p.granica - 4)) / (p.slychac - p.granica + 8), 0), 1); }
                              : (b) => (Lv) => Math.min(Math.max((GRANICA_DB(GRUPY[b].f) - Lv) / L_ZAKRES, 0), 1);   // ciemno na granicy zasięgu pasma
   let zadania;
   if (rodzaj.rtv) {
@@ -663,9 +697,10 @@ async function przelicz() {
       : (await zlecaj({ typ: "grupy", P: { x: widok.E - U.E0, y: widok.N - U.N0 }, hRx, rodzaj: rodzaj.id }, zywe))?.grupy ?? [];
     zadania = gr.slice(0, ILE_RTV).map((gi) => ({ typ: "pole", siatka: L, hRx, gi, rodzaj: rodzaj.id, program }));
     $("legenda").textContent = `Jasność = natężenie pola ${rodzaj.nazwa}${program ? ` (${program})` : ""} z ${Math.min(ILE_RTV, gr.length)} nadajników najmocniejszych ${P && wynik ? "w punkcie" : "w środku widoku"} (ITU-R P.1546). ` +
-      (rodzaj.id === "fm" ? `Dobry odbiór (stereo) od ${PROGI_FM_OTOCZENIE.map((o) => `${o.slychac} dBµV/m (${o.nazwa})`).join(", ")}; ` +
-        `granica (mono) ${PROGI_FM_OTOCZENIE.map((o) => o.granica).join(" / ")} — im więcej zabudowy, tym więcej zakłóceń z urządzeń elektrycznych (ITU-R BS.412).`
-        : `Dobry odbiór od ${PROGI_RTV[rodzaj.id].slychac} dBµV/m, granica ${PROGI_RTV[rodzaj.id].granica}.`) +
+      (rodzaj.id === "fm" ? `Dobry odbiór (stereo) od ${PROGI_FM_OTOCZENIE.map((o, k) => `${progiRtv("fm", k, zysk).slychac} dBµV/m (${o.nazwa})`).join(", ")}; ` +
+        `granica (mono) ${PROGI_FM_OTOCZENIE.map((o, k) => progiRtv("fm", k, zysk).granica).join(" / ")} — im więcej zabudowy, tym więcej zakłóceń z urządzeń elektrycznych (ITU-R BS.412).`
+        : `Dobry odbiór od ${progiRtv(rodzaj.id, null, zysk).slychac} dBµV/m, granica ${progiRtv(rodzaj.id, null, zysk).granica}.`) +
+      (zysk ? ` Progi przesunięte o ${zTekst(-zysk)} (suwak zysku anteny).` : "") +
       (przyGranicy(x0, y1 - n * krok, x0 + n * krok, y1) ? " Tylko polskie nadajniki: przy granicy i nad morzem zagraniczne nie są liczone." : "");
   } else {
     const ls = stacje.stacje.filter((s) => s.pasma.some(rodzaj.p) && (!siec.re || s.operatorzy.some((o) => siec.re.test(o)))), xL0 = L.x0, xL1 = L.x0 + n * krok, yL0 = L.y1 - n * krok, yL1 = L.y1;
@@ -884,7 +919,7 @@ function wypelnijProgramy() {              // programy rodzaju od najmocniejszeg
   sel.value = program ?? "";
 }
 function sila(typ, E) {                   // natężenie wobec progów -> słowo i rada dla montującego (FM: progi otoczenia punktu)
-  const p = progiRtv(typ, wynik?.otoczenie);
+  const p = progiRtv(typ, wynik?.otoczenie, zysk);
   if (E >= p.slychac + 10) return ["mocny", "czysta", "wystarczy zwykła, niewielka antena kierunkowa"];
   if (E >= p.slychac) return ["dobry", "czysta", "zwykła antena kierunkowa"];
   if (E >= p.granica) return ["słaby", "czesciowo", "antena kierunkowa o dużym zysku, jak najwyżej; czasem potrzebny wzmacniacz masztowy"];
@@ -968,8 +1003,8 @@ function orientacja(az, cel) {            // jak znaleźć kierunek w terenie: s
 }
 const pamiecWysokosci = new Map();
 async function wysokosci(zywy) {          // od jakiej wysokości jest dobry odbiór najlepszego kierunku (radio/TV)
-  const k = `${P.x}|${P.y}|${rodzaj.id}`, typ = rodzaj.id, P0 = P;
-  if (!pamiecWysokosci.has(k)) pamiecWysokosci.set(k, zlecaj({ typ: "wysokosci", P, rodzaj: typ, hs: [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] }, () => true, true));
+  const k = `${P.x}|${P.y}|${rodzaj.id}|${zysk}`, typ = rodzaj.id, P0 = P;
+  if (!pamiecWysokosci.has(k)) pamiecWysokosci.set(k, zlecaj({ typ: "wysokosci", P, rodzaj: typ, zysk, hs: [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] }, () => true, true));
   const w = await pamiecWysokosci.get(k);
   if (!w) { pamiecWysokosci.delete(k); if ($("kartaWys")) $("kartaWys").textContent = "nie udało się policzyć"; return; }
   if (!zywy() || rodzaj.id !== typ || P !== P0) return;    // w międzyczasie inny punkt albo rodzaj
@@ -1003,7 +1038,8 @@ function karta() {                        // odpowiedź dla montującego: gdzie 
       <dl>
         <dt>Ułożenie</dt><dd>${ULOZENIE[b.p0.pol] ?? "—"}</dd>
         <dt>Sygnał</dt><dd><b class="${klasa}">${slowo}</b> na ${hTekst(hRx)} — ${rada}</dd>${rodzaj.id === "fm" && wynik.otoczenie != null ? ((o) =>
-        `<dt>Otoczenie</dt><dd>${o.nazwa} — dobry odbiór (stereo) od ${o.slychac} dBµV/m, mono od ${o.granica}; im gęstsza zabudowa, tym więcej zakłóceń</dd>`)(PROGI_FM_OTOCZENIE[wynik.otoczenie]) : ""}
+        `<dt>Otoczenie</dt><dd>${o.nazwa} — dobry odbiór (stereo) od ${o.slychac} dBµV/m, mono od ${o.granica}; im gęstsza zabudowa, tym więcej zakłóceń</dd>`)({ ...progiRtv("fm", wynik.otoczenie, zysk), nazwa: PROGI_FM_OTOCZENIE[wynik.otoczenie].nazwa }) : ""}
+        <dt>Zysk anteny</dt><dd>${zTekst(zysk)} względem anteny progów${zysk ? ` — progi ${zysk > 0 ? "niższe" : "wyższe"} o ${Math.abs(zysk)} dB` : ""}${rodzaj.id !== "fm" ? ((p) => `: dobry odbiór od ${p.slychac} dBµV/m, granica ${p.granica}`)(progiRtv(rodzaj.id, null, zysk)) : ""}</dd>
         <dt>Wysokość</dt><dd id="kartaWys" class="maly">liczę…</dd>
         <dt>Antena</dt><dd>${antena}</dd>
       </dl>
@@ -1064,7 +1100,7 @@ async function ustaw(x, y) {
   // przy oddalonym widoku pobranie zdradziłoby serwerowi, w której paczce 20 km jest punkt
   const bokW = Math.max(mapa.width, mapa.height) * widok.mpp, [ex, ey] = naEkran(x + U.E0, y + U.N0);
   const nz = bokW <= PROG_PACZEK && ex >= 0 && ey >= 0 && ex <= mapa.width && ey <= mapa.height ? paczkiProstokata(x, y, x, y)[0] : null;
-  const [w] = await Promise.all([zlecaj({ typ: "punkt", P, hRx, stacje: blisko }, zywy, true), nz && mapaPaczki(nz).laduje, nz && adresyPaczki(nz)]);
+  const [w] = await Promise.all([zlecaj({ typ: "punkt", P, hRx, zysk, stacje: blisko }, zywy, true), nz && mapaPaczki(nz).laduje, nz && adresyPaczki(nz)]);
   if (!zywy()) return;
   if (!w) { $("status").textContent = "Nie udało się policzyć kierunków (pliki danych nie doszły?) — dotknij punktu jeszcze raz."; $("karta").innerHTML = ""; przelicz(); return; }
   wynik = w;
@@ -1097,8 +1133,8 @@ if (KAWA) { $("kawaLink").href = $("znakKawa").href = KAWA; $("kawa").hidden = $
   $("kontaktWyslij").onclick = () => { const temat = `RadioWid — ${$("kontaktRodzaj").value}`, tresc = $("kontaktTresc").value.trim();
     location.href = `mailto:${adres}?subject=${encodeURIComponent(temat)}&body=${encodeURIComponent(tresc)}`; }; }
 if (naTelefonie()) zwin(true);            // start: mapa na większości ekranu, pod spodem sama karta
-ustawH(hRx); pokazSekcje();
-pokaz(); przelicz();
+ustawH(hRx); ustawZ(zysk); pokazSekcje();
+pokaz(); if (punktStartowy) ustaw(punktStartowy.E - U.E0, punktStartowy.N - U.N0); else przelicz();
 </script>
 </body>
 </html>
