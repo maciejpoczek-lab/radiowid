@@ -18,11 +18,15 @@ function zInt16(d, o) {                                  // roznice int16 modulo
   return a;
 }
 
-export async function wczytajZestaw(baza, czytaj) {
+// tylko: lista tablic do wczytania (z ich "baza"); [] = sam manifest. Bez listy - wszystkie (weryfikacja, podglad).
+// Zgloszenie 2026-10-16 (Redmi Note, Windows 11): strona i kazdy watek rozpakowywaly M 1614 x 4142 (8,5 MB gz, 27 MB float32),
+// ktorej poziomy nie czytaja wcale (podejrzana przyczyna zawieszania przy starcie).
+export async function wczytajZestaw(baza, czytaj, tylko) {
   czytaj ??= async (p) => new Uint8Array(await (await fetch(p)).arrayBuffer());
   const man = JSON.parse(new TextDecoder().decode(await czytaj(`${baza}/manifest.json`)));
-  const t = {};
-  await Promise.all(Object.entries(man.tablice).map(async ([n, o]) => {
+  const t = {}, chce = tylko && new Set(tylko);
+  for (const n of chce ?? []) { const z = man.tablice[n]?.kodowanie?.baza; if (z) chce.add(z); }
+  await Promise.all(Object.entries(man.tablice).filter(([n]) => !chce || chce.has(n)).map(async ([n, o]) => {
     if (!o.kodowanie) {
       const b = await czytaj(`${baza}/${n}.bin`);
       t[n] = new TYP[o.dtype](b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
@@ -33,7 +37,7 @@ export async function wczytajZestaw(baza, czytaj) {
     t[n].ksztalt = o.ksztalt;
   }));
   for (const [n, o] of Object.entries(man.tablice)) {     // wysokosci liczone od innej tablicy (O = G + wysokosc nad G)
-    const z = o.kodowanie?.baza; if (!z) continue;
+    const z = o.kodowanie?.baza; if (!z || !t[n]) continue;
     const a = t[n], g = t[z]; for (let k = 0; k < a.length; k++) a[k] = Math.fround(a[k] + g[k]);
   }
   return { meta: man.meta, t };

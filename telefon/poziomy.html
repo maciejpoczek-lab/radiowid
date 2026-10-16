@@ -316,7 +316,7 @@ function rozpakujStacje(d) {             // zapis kolumnowy (przygotuj/stacje_kr
   return { ...d, stacje: d.stacje.map(([x, y, h, op, pa, adres]) => ({ x, y, ...(h == null ? {} : { h_ant: h }),
     operatorzy: op.map((k) => d.operatorzy[k]), pasma: pa.map((k) => d.pasma[k]), adres })) };
 }
-const [{ meta }, rtv, stacje, pk, t1000] = await Promise.all([wczytajZestaw("/dane/obszar-2880-2180-z"),
+const [{ meta }, rtv, stacje, pk, t1000] = await Promise.all([wczytajZestaw("/dane/obszar-2880-2180-z", undefined, []),   // sam manifest (uklad, zrodla)
   gz("/dane/kraj/nadajniki.json.gz"), gz("/dane/kraj/stacje.json.gz").then(rozpakujStacje), gz("/dane/kraj/podklad.json.gz"),
   fetch("/dane/kraj/teren-1000.pak").then((r) => r.arrayBuffer())]);
 const U = meta.uklad;

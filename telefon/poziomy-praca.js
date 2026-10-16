@@ -34,7 +34,8 @@ function zaladujKraj(x0, y0, x1, y1) {                    // EPSG:2180 bezwzglę
   }));
 }
 async function przygotuj() {
-  const [{ meta, t }, kr, ot] = await Promise.all([wczytajZestaw("../dane/obszar-2880-2180-z"), gz("../dane/kraj/nadajniki.json.gz"), gz("../dane/kraj/otoczenie.json.gz")]);
+  const [{ meta, t }, kr, ot] = await Promise.all([wczytajZestaw("../dane/obszar-2880-2180-z", undefined, ["T"]), gz("../dane/kraj/nadajniki.json.gz"), gz("../dane/kraj/otoczenie.json.gz")]);
+  // tylko T (30 m w promieniu RL od rynku): wysokosc() poza RL bierze NMT 100 m kraju, M (Copernicus 30 m) nie jest tu potrzebna
   const U = meta.uklad, T = probnikDolek(meta.teren, t), RL = meta.teren.RL;
   // nadajniki radia/TV całej Polski (rtv_kraj.py): e/n bezwzględnie -> układ wątku
   const fm = { meta: { ...kr.meta, grupy: kr.meta.grupy.map((g) => ({ ...g, x: g.e - U.E0, y: g.n - U.N0 })) } };

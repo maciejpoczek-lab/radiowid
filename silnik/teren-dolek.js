@@ -23,8 +23,9 @@ export function probnikDolek(meta, t) {
 
 // Uklad 2180 (przygotuj/na2180.py): T jak wyzej, ale w osiach 2180 od rynku; dalej M = Copernicus przepróbkowany do siatki 2180
 // (M_X0 zachod, M_Y1 polnoc, krok M_C) - bez przeliczenia na stopnie. Poza wycinkiem (NaN) blad jak dotad.
+// Bez t.M (wczytajZestaw z tylko ["T"]) kazda probka poza RL to ten sam blad - wolajacy sam pilnuje, zeby tam nie siegac.
 function probnik2180({ RL, CL, M_X0, M_Y1, M_C }, t) {
-  const [Tn0, Tn1] = t.T.ksztalt, [Mn0, Mn1] = t.M.ksztalt;
+  const [Tn0, Tn1] = t.T.ksztalt, [Mn0, Mn1] = t.M?.ksztalt ?? [0, 0];
   const clip = (v, a, b) => Math.min(Math.max(v, a), b);
   return (x, y) => {
     if (Math.abs(x) < RL && Math.abs(y) < RL)
