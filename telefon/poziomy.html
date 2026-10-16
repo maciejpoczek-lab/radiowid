@@ -303,6 +303,15 @@ function barwa(f) {                      // 700 MHz czerwień -> 3600 MHz fiolet
 }
 const SIECI = [{ nazwa: "dowolna" }, { nazwa: "Orange", re: /^Orange/ }, { nazwa: "Play", re: /^P4\b/ }, { nazwa: "T-Mobile", re: /^T-Mobile/ }, { nazwa: "Plus", re: /^Polkomtel/ }];
 const marka = (o) => SIECI.find((n) => n.re?.test(o))?.nazwa ?? o.split(" ")[0];
+// NetWorkS!: Orange i T-Mobile dzielą maszty, a rejestr UKE zapisuje maszt pod jednym z nich (pomiar 2026-10-16: wspólny punkt
+// 53 na ~13 tys.). Stacja partnera liczy się dla wybranej sieci tylko w pasmach dzielonych (MoRAN, decyzja Maćka 2026-10-16);
+// 5G 3600 i pasma 700/900 nie, bo nie wiadomo, czy partner je tam ma.
+const NETWORKS = /^(Orange|T-Mobile)/, PASMA_NETWORKS = new Set(["lte800", "lte1800", "lte2100", "lte2600", "5g2100"]);
+function pasmaSieci(s) {                // pasma stacji, na których nadaje wybrana sieć
+  if (!siec.re || s.operatorzy.some((o) => siec.re.test(o))) return s.pasma;
+  return NETWORKS.test(siec.nazwa) && s.operatorzy.some((o) => NETWORKS.test(o)) ? s.pasma.filter((p) => PASMA_NETWORKS.has(p)) : [];
+}
+const wspolnaZ = (s) => siec.re && !s.operatorzy.some((o) => siec.re.test(o)) ? siec.nazwa : null;   // stacja partnera NetWorkS!
 const NAZWA_RTV = { fm: "FM", dab: "DAB+", dvbt: "DVB-T" };
 const KOMPAS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 const OCENA = { czysta: "czysta", czesciowo: "częściowo", zaslonieta: "zasłonięta", slychac: "odbiór", granica: "granica", nie: "nie",
@@ -747,7 +756,7 @@ async function przelicz() {
       (zysk ? ` Progi przesunięte o ${zTekst(-zysk)} (suwak zysku anteny).` : "") +
       (przyGranicy(x0, y1 - n * krok, x0 + n * krok, y1) ? " Tylko polskie nadajniki: przy granicy i nad morzem zagraniczne nie są liczone." : "");
   } else {
-    const ls = stacje.stacje.filter((s) => s.pasma.some(rodzaj.p) && (!siec.re || s.operatorzy.some((o) => siec.re.test(o)))), xL0 = L.x0, xL1 = L.x0 + n * krok, yL0 = L.y1 - n * krok, yL1 = L.y1;
+    const ls = stacje.stacje.filter((s) => pasmaSieci(s).some(rodzaj.p)), xL0 = L.x0, xL1 = L.x0 + n * krok, yL0 = L.y1 - n * krok, yL1 = L.y1;
     const zaKr = (s) => Math.max(xL0 - s.x, s.x - xL1, yL0 - s.y, s.y - yL1, 0);
     // punkt liczy się tylko w widoku (z zapasem ZASIEG); punkt daleko poza nim dałby światło z odległych stacji i minuty liczenia
     const S0 = { x: widok.E - U.E0, y: widok.N - U.N0 }, pol = n * krok / 2 + ZASIEG;
@@ -766,7 +775,7 @@ async function przelicz() {
       }
     }
     zadania = lista.map((s) => {             // pasma stacji zawężone do rodzaju -> grupy; każda grupa liczona na swojej częstotliwości
-      const fs = GRUPY.map((g) => s.pasma.some((p) => rodzaj.p(p) && PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p])) ? g.f : null);
+      const fs = GRUPY.map((g) => pasmaSieci(s).some((p) => rodzaj.p(p) && PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p])) ? g.f : null);
       return { typ: "swiatlo", siatka: L, hRx, S: { x: s.x, y: s.y, h: s.h_ant ?? 35 }, f: fs.filter(Boolean), fs };
     }).filter((z) => z.f.length);
     GRUPY.forEach((g, b) => { $("pasma").children[b].hidden = !zadania.some((z) => z.fs[b]); });   // przełączniki tylko pasm obecnych w widoku
@@ -937,9 +946,8 @@ const ULOZENIE = { H: "poziomo — pręty anteny równolegle do ziemi", V: "pion
 const odl = (km) => (km < 1 ? `${Math.round(km * 100) * 10} m` : `${km.toFixed(0)} km`);
 function lista() {                        // stacje z pasmami wybranego rodzaju i sieci, od największego zapasu sygnału (odległość + pasmo + przeszkody)
   if (!wynik || rodzaj.rtv) return [];
-  const st = siec.re ? wynik.stacje.filter((s) => s.operatorzy.some((o) => siec.re.test(o))) : wynik.stacje;
-  return st.map((s) => {
-    const pasma = s.pasma.filter(rodzaj.p), wy = pasma.map((b) => s.pasma_wynik[b]).filter(Boolean);
+  return wynik.stacje.map((s) => {
+    const pasma = pasmaSieci(s).filter(rodzaj.p), wy = pasma.map((b) => s.pasma_wynik[b]).filter(Boolean);
     if (!wy.length) return null;
     const nad = wy.map((w) => w.nadwyzka_db), naj = wy.reduce((a, w) => (w.zapas_db > a.zapas_db ? w : a));
     return { ...s, pasma, nadwyzka_min_db: Math.min(...nad), nadwyzka_max_db: Math.max(...nad), droga: ocena(Math.min(...nad)),
@@ -1101,7 +1109,7 @@ function karta() {                        // odpowiedź dla montującego: gdzie 
       <div class="azymut">${geo(b.azymut)}° <span>${strona(b.azymut)}</span></div>
       <div>na stację ${adres(b)}, ${b.km < 1 ? Math.round(b.km * 1000) + " m" : b.km.toFixed(1).replace(".", ",") + " km"}</div></div></div>
     <dl>
-      <dt>Sieć</dt><dd>${[...new Set(b.operatorzy.map(marka))].join(", ")}</dd>
+      <dt>Sieć</dt><dd>${[...new Set(b.operatorzy.map(marka))].join(", ")}${wspolnaZ(b) ? ` — maszt NetWorkS!, wspólny z ${wspolnaZ(b)}` : ""}</dd>
       <dt>Zasięg</dt><dd><b class="${b.ocena}">${ZASIEG_OPIS[b.ocena]}</b> (pasmo ${b.pasmo_naj} MHz, zapas ${b.zapas_db.toFixed(0)} dB)</dd>
       <dt>Droga fali</dt><dd><b class="${b.droga}">${DROGA[b.droga]}</b> na ${hTekst(hRx)}${wynik.scena === "teren" ? " (sam teren, bez budynków i drzew)" : ""}</dd>
       <dt>Pasma</dt><dd>${GRUPY.filter((g) => b.pasma.some((p) => PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p]))).map(nazwaGrupy).join("; ")}</dd>
