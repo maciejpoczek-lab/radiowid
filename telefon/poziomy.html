@@ -407,7 +407,7 @@ function mapaPaczki(nz) {                                   // podkład jednej p
   w.laduje = gz(`${BAZA_MAPY}/${nz}-mapa.json.gz`).then((mp) => {
     const dx = mp.rog[0] - U.E0, dy = mp.rog[1] - U.N0, W = (l, z) => warstwa(l, z, dx, dy);
     w.dane = {
-      x0: dx, y0: dy, x1: dx + BOK_P, y1: dy + BOK_P,
+      nz, x0: dx, y0: dy, x1: dx + BOK_P, y1: dy + BOK_P,
       wody: W(mp.wody, true), wody_ogol: W(mp.wody_ogol, true), rzeki: W(mp.rzeki.map((r) => r[1])), rzeki_ogol: W(mp.rzeki_ogol.map((r) => r[1])),
       tory: W(mp.tory), tory_ogol: W(mp.tory_ogol),
       jezdnie: [0, 1, 2, 3, 4].map((k) => W(mp.jezdnie.filter((j) => j[0] === k).map((j) => j[1]))),
@@ -438,10 +438,51 @@ function adresyPaczki(nz) {                                 // Promise<[{ulica, 
     const dx = a.rog[0] - U.E0, dy = a.rog[1] - U.N0;
     const l = a.adresy.map(([u, nr, x, y]) => ({ ulica: a.ulice_nazwy[u][0], msc: a.ulice_nazwy[u][1], nr, x: x + dx, y: y + dy,
       klucz: bezOgonkow(`${a.ulice_nazwy[u][0]} ${nr} ${a.ulice_nazwy[u][1]}`) }));
+    l.kolory = kolorujUlice(l); for (const ad of l) ad.kol = KOLORY_NR[l.kolory.get(ad.ulica)];
     l.gotowe = true; ADR.set(nz, l); pokaz(); return l;
   }).catch(() => (setTimeout(() => ADR.delete(nz), 30000), [])) : Promise.resolve([]));
   return ADR.get(nz);
 }
+// Numery domów bez nazwy ulicy myliły na skrzyżowaniach (zgłoszenie 2026-10-16, Poznań, Wojska Polskiego 18/20: obok stoją Wojska Polskiego 22
+// i Wołyńska 20, 22). Kolor numeru = kolor jego ulicy; ulice, których adresy sąsiadują (te same albo sąsiednie kratki 30 m), dostają różne kolory.
+const KOLORY_NR = ["#e8c25a", "#6fd3e8", "#f39bc0", "#9be27f", "#f5a35c", "#bfa8ff"];
+function kolorujUlice(l) {                                  // Map ulica -> indeks w KOLORY_NR; zachłannie, najpierw ulice z największą liczbą sąsiadów
+  const S = 30, kratki = new Map(), sas = new Map();
+  for (const ad of l) { const k = `${Math.floor(ad.x / S)},${Math.floor(ad.y / S)}`; (kratki.get(k) ?? kratki.set(k, new Set()).get(k)).add(ad.ulica);
+    if (!sas.has(ad.ulica)) sas.set(ad.ulica, new Set()); }
+  for (const [k, u] of kratki) { const [cx, cy] = k.split(",").map(Number);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const v = kratki.get(`${cx + i},${cy + j}`); if (v) for (const a of u) for (const b of v) if (a !== b) sas.get(a).add(b); } }
+  const kol = new Map();
+  for (const u of [...sas.keys()].sort((p, q) => sas.get(q).size - sas.get(p).size || (p < q ? -1 : 1))) {
+    const zaj = KOLORY_NR.map(() => 0); for (const v of sas.get(u)) if (kol.has(v)) zaj[kol.get(v)]++;
+    kol.set(u, zaj.indexOf(Math.min(...zaj)));
+  }
+  return kol;
+}
+function siatkaUlic(p) {                                    // odcinki linii ulic paczki w kratkach 50 m (do odległości adresu od ulic)
+  if (p.siatka) return p.siatka;
+  const S = 50, G = p.siatka = new Map();
+  for (const [nazwa, l] of p.ulLinie) for (let k = 0; k + 3 < l.length; k += 2) {
+    const [x0, y0, x1, y1] = [l[k], l[k + 1], l[k + 2], l[k + 3]];
+    for (let cx = Math.floor(Math.min(x0, x1) / S); cx <= Math.floor(Math.max(x0, x1) / S); cx++)
+      for (let cy = Math.floor(Math.min(y0, y1) / S); cy <= Math.floor(Math.max(y0, y1) / S); cy++) { const k2 = `${cx},${cy}`; (G.get(k2) ?? G.set(k2, []).get(k2)).push([nazwa, x0, y0, x1, y1]); }
+  }
+  return G;
+}
+function obcaUlica(ad) {                                    // punkt adresowy bliżej cudzej ulicy niż własnej -> podpis z nazwą („Wołyńska 3”); undefined: linie ulic się wczytują
+  if (ad.obca !== undefined) return ad.obca;
+  const R = 150, S = 50; let wl = Infinity, ob = Infinity;
+  for (const nz of paczkiProstokata(ad.x - R, ad.y - R, ad.x + R, ad.y + R)) {
+    const p = mapaPaczki(nz).dane; if (!p) return undefined; const G = siatkaUlic(p);
+    for (let cx = Math.floor((ad.x - R) / S); cx <= Math.floor((ad.x + R) / S); cx++) for (let cy = Math.floor((ad.y - R) / S); cy <= Math.floor((ad.y + R) / S); cy++)
+      for (const [nazwa, x0, y0, x1, y1] of G.get(`${cx},${cy}`) ?? []) {
+        const ex = x1 - x0, ey = y1 - y0, L = ex * ex + ey * ey, t = L ? Math.max(0, Math.min(1, ((ad.x - x0) * ex + (ad.y - y0) * ey) / L)) : 0;
+        const d = Math.hypot(ad.x - x0 - t * ex, ad.y - y0 - t * ey); if (nazwa === ad.ulica) wl = Math.min(wl, d); else ob = Math.min(ob, d);
+      }
+  }
+  return ad.obca = wl <= R && ob + 5 < wl;                  // bez własnej linii w pobliżu (wieś bez ulic) - sam numer
+}
+let ulicaWybrana = null;                                    // {ulica, msc} z wyszukiwarki: jej numery jasne, pozostałe przygaszone
 const PROG_RANGI = [Infinity, 220, 60, 22, 6];               // metry na piksel CSS, poniżej których widać nazwę danej rangi
 function rysujPodklad(g) {
   const s = dpr(), mc = widok.mpp * s, ogol = mc > 25, bokW = Math.max(mapa.width, mapa.height) * widok.mpp;   // mc: metry na piksel CSS
@@ -492,12 +533,13 @@ function rysujPodklad(g) {
   }
   if (mc < 2.5) {
     g.font = `600 ${11 * s}px system-ui`;
-    for (const n of paczki.flatMap((p) => p.ulice)) {
+    for (const p of paczki) for (const n of p.ulice) {
       const [x, y] = ekr(n.x, n.y); if (x < -50 || y < -50 || x > mapa.width + 50 || y > mapa.height + 50) continue;
       const w = g.measureText(n.nazwa).width; if (n.d / widok.mpp < w * 0.8 || !wolne(x, y, w + 8 * s, 16 * s)) continue;
       zajete.push([x, y, w + 8 * s, 16 * s]);
       let kat = n.kat; if (kat > Math.PI / 2) kat -= Math.PI; if (kat < -Math.PI / 2) kat += Math.PI;
-      g.save(); g.translate(x, y); g.rotate(-kat); napis(n.nazwa, 0, 0, g.font, "#f2f2f4"); g.restore();
+      const ki = mc < 0.9 ? ADR.get(p.nz)?.kolory?.get(n.nazwa) : undefined;   // przy numerach domów nazwa w kolorze swoich numerów
+      g.save(); g.translate(x, y); g.rotate(-kat); napis(n.nazwa, 0, 0, g.font, ki === undefined ? "#f2f2f4" : KOLORY_NR[ki]); g.restore();
     }
   }
   if (mc < 0.9) {                                               // numery domów: adresy paczek w widoku (wczytywane przy tym przybliżeniu)
@@ -505,8 +547,10 @@ function rysujPodklad(g) {
       const l = ADR.get(nz); if (!l) { adresyPaczki(nz); continue; } if (!l.gotowe) continue;
       for (const ad of l) {
         const [x, y] = ekr(ad.x, ad.y); if (x < 0 || y < 0 || x > mapa.width || y > mapa.height) continue;
-        g.font = `${10 * s}px system-ui`; const w = g.measureText(ad.nr).width; if (!wolne(x, y, w + 4 * s, 12 * s)) continue; zajete.push([x, y, w + 4 * s, 12 * s]);
-        napis(ad.nr, x, y, g.font, "#e8c25a");
+        const t = ad.ulica !== ad.msc && obcaUlica(ad) ? `${ad.ulica} ${ad.nr}` : ad.nr;
+        g.font = `${10 * s}px system-ui`; const w = g.measureText(t).width; if (!wolne(x, y, w + 4 * s, 12 * s)) continue; zajete.push([x, y, w + 4 * s, 12 * s]);
+        g.globalAlpha = ulicaWybrana && (ad.ulica !== ulicaWybrana.ulica || ad.msc !== ulicaWybrana.msc) ? 0.5 : 1;
+        napis(t, x, y, g.font, ad.kol); g.globalAlpha = 1;
       }
     }
   }
@@ -551,7 +595,7 @@ async function znajdz(q) {
   const ad = adr.filter((a) => (!wMsc.size || wMsc.has(bezOgonkow(a.msc))) && reszta.every((w) => a.klucz.includes(w)) && (!nr || bezOgonkow(a.nr).startsWith(nr)))
     // najpierw adresy z największą liczbą słów zapytania: „Kościuszki” bywa i wsią, i ulicą - ulica Kościuszki ma wygrać z Cichą 12
     .sort((p, q2) => trafien(q2) - trafien(p) || (nr ? (bezOgonkow(q2.nr) === nr) - (bezOgonkow(p.nr) === nr) : 0) || p.klucz.length - q2.klucz.length || parseInt(p.nr) - parseInt(q2.nr))
-    .slice(0, 6).map((a) => ({ t: `${a.ulica} ${a.nr}`, d: a.ulica === a.msc ? "" : a.msc, x: a.x, y: a.y, bok: 720 }));
+    .slice(0, 6).map((a) => ({ t: `${a.ulica} ${a.nr}`, d: a.ulica === a.msc ? "" : a.msc, x: a.x, y: a.y, bok: 720, ul: { ulica: a.ulica, msc: a.msc } }));
   return [...msc, ...ad];
 }
 let nrSzukania = 0;
@@ -562,7 +606,7 @@ $("szukaj").oninput = async () => {
   box.replaceChildren();
   for (const r of lista) {
     const b = document.createElement("button"); b.append(r.t); if (r.d) { const m = document.createElement("small"); m.textContent = " · " + r.d; b.append(m); }
-    b.onclick = () => { box.replaceChildren(); $("szukaj").value = r.t + (r.d && !/gm\.|wieś|miasto|część|kolonia|osada/.test(r.d) ? ", " + r.d : ""); idzDo(r.x, r.y, r.t, r.bok, r.bok <= 720); };
+    b.onclick = () => { box.replaceChildren(); ulicaWybrana = r.ul ?? null; $("szukaj").value = r.t + (r.d && !/gm\.|wieś|miasto|część|kolonia|osada/.test(r.d) ? ", " + r.d : ""); idzDo(r.x, r.y, r.t, r.bok, r.bok <= 720); };
     box.append(b);
   }
   return lista;
@@ -875,7 +919,7 @@ function dotknij(x, y) {                  // dotknięcie = punkt; trafiony nadaj
   $("info").textContent = best ? `Nadajnik ${best.programy[0].stacja}: antena ok. ${best.hant} m nad gruntem · ` +
     best.programy.map((p) => `${NAZWA_RTV[p.typ ?? "fm"]} ${p.program}${p.kanal && p.typ !== "fm" ? ` (kanał ${p.kanal})` : ` ${p.mhz.toFixed(1)} MHz`}`).join(" · ") : "";
   if (naTelefonie()) { zwin(true); zakladka("wynik"); }
-  znacznik = null; $("szukaj").value = ""; $("podpowiedzi").replaceChildren();   // kółko i tekst wyszukiwarki dotyczą poprzedniego miejsca
+  znacznik = ulicaWybrana = null; $("szukaj").value = ""; $("podpowiedzi").replaceChildren();   // kółko i tekst wyszukiwarki dotyczą poprzedniego miejsca
   const [E, N] = zEkranu(x, y); ustaw(E - U.E0, N - U.N0);
 }
 
