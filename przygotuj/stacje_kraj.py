@@ -54,11 +54,24 @@ for r in json.load(open(os.path.join(HERE, "stacje-rozebrane.json")))["stacje"]:
     if not traf: print(f'rozebrana juz nie w rejestrze - usun wpis: {r["adres"]} ({r["operator"]})'); continue
     for c in traf: c["operatorzy"].discard(r["operator"])
     print(f'zdjeta jako rozebrana: {r["adres"]} ({r["operator"]})')
+# stacje nieczynne wg BTSearch (decyzja Macka 2026-10-17): zdejmujemy operatora z punktu do BTS_PROMIEN m. Stacja z notatka
+# w BTSearch zostaje - notatki mowia o stacjach tymczasowych, przeniesionych albo "sygnal z anten innego operatora".
+from btsearch import nieczynne
+BTS_PROMIEN = 50
+bts, BTS_STAN = nieczynne(os.path.join(MAPA, "dane", "kraj", "btsearch-nieczynne.json")); zdjete = 0
+for b in bts:
+    if b["notatka"]: continue
+    n, e = (float(v) for v in na_2180(b["lat"], b["lon"])); x, y = e - E0, n - N0
+    for c in wsp:
+        if (c["x"] - x) ** 2 + (c["y"] - y) ** 2 >= BTS_PROMIEN ** 2: continue
+        ops = {o for o in c["operatorzy"] if o.startswith(b["operatorzy"])}
+        if ops: c["operatorzy"] -= ops; zdjete += 1
+print(f"BTSearch: nieczynnych {len(bts)}, zdjetych z mapy {zdjete}")
 wsp = [c for c in wsp if any(c["operatorzy"])]
 os.makedirs(os.path.join(MAPA, "dane", "kraj"), exist_ok=True)
 cel = os.path.join(MAPA, "dane", "kraj", "stacje.json.gz")
 with gzip.open(cel, "wt", encoding="utf-8", compresslevel=9) as f:
-    json.dump({"zrodlo": "UKE rejestr stacji bazowych, stan 2026-09-25 (bez wysokosci anten, azymutow i mocy)", "uklad": "EPSG:2180 minus E0 679860, N0 451200 (rynek Garwolina); azymut geograficzny = siatki + zbieznosc poludnikow w punkcie (liczy strona)",
+    json.dump({"zrodlo": "UKE rejestr stacji bazowych, stan 2026-09-25 (bez wysokosci anten, azymutow i mocy)" + (f"; bez stacji nieczynnych wg BTSearch (btsearch.pl), stan {BTS_STAN}" if BTS_STAN else ""), "uklad": "EPSG:2180 minus E0 679860, N0 451200 (rynek Garwolina); azymut geograficzny = siatki + zbieznosc poludnikow w punkcie (liczy strona)",
                "kolumny": ["x", "y", "h_ant", "operatorzy", "pasma", "adres"], "operatorzy": OP, "pasma": PA, "stacje": out},
               f, ensure_ascii=False, separators=(",", ":"))
 print(f"punktow rejestru: {len(st)}; stacji po sklejeniu < {SKLEJ} m: {len(out)}; z wysokoscia anteny (pas): {zh}; plik {os.path.getsize(cel) / 1e6:.2f} MB")
