@@ -44,9 +44,6 @@ for s in st.values():
     cel["operatorzy"] |= s["operatorzy"]; cel["pasma"] |= s["pasma"]; cel["n"] += 1
     h = ZNANE.get((s["lat"], s["lon"]))
     if h is not None: cel["h"] = h if cel["h"] is None else max(cel["h"], h)
-out = [[round(c["x"]), round(c["y"]), c["h"], sorted(iop[o] for o in c["operatorzy"] if o), sorted(ipa[p] for p in c["pasma"]), c["adres"]] for c in wsp]
-zh = sum(c["h"] is not None for c in wsp)
-out.sort(key=lambda r: (r[1], r[0]))
 # stacje zgloszone jako rozebrane, a jeszcze w rejestrze (decyzja Macka 2026-10-17): operator zdjety z punktu, pusty punkt znika.
 # Pasma sa wspolne dla punktu, wiec gdy zostaje inny operator, pasma zostaja w calosci.
 for r in json.load(open(os.path.join(HERE, "stacje-rozebrane.json")))["stacje"]:
@@ -67,11 +64,33 @@ for b in bts:
         ops = {o for o in c["operatorzy"] if o.startswith(b["operatorzy"])}
         if ops: c["operatorzy"] -= ops; zdjete += 1
 print(f"BTSearch: nieczynnych {len(bts)}, zdjetych z mapy {zdjete}")
+# stacje zlikwidowane wg SI2PEM (2026-10-18): jak wyzej, ale zostaje punkt, przy ktorym SI2PEM ma AKTYWNA stacje tego
+# samego operatora (przeniesienie anten, nowa instalacja w tym samym miejscu)
+from si2pem import stacje as si2pem_stacje
+zlik, akt, SI_STAN = si2pem_stacje(os.path.join(MAPA, "dane", "kraj", "si2pem-stacje.json")); zdjete = 0
+def _xy(lon, lat): n, e = (float(v) for v in na_2180(lat, lon)); return e - E0, n - N0
+okolica = {(round(s[1], 2), round(s[0], 2)) for s in zlik}
+akt_xy = [(*_xy(s[0], s[1]), s[2]) for s in akt if any((round(s[1], 2) + i, round(s[0], 2) + j) in okolica for i in (-0.01, 0, 0.01) for j in (-0.01, 0, 0.01))]
+siatka_w = {}
+for c in wsp: siatka_w.setdefault((int(c["x"] // BTS_PROMIEN), int(c["y"] // BTS_PROMIEN)), []).append(c)
+for s in zlik:
+    x, y = _xy(s[0], s[1])
+    if any(o == s[2] and (ax - x) ** 2 + (ay - y) ** 2 < BTS_PROMIEN ** 2 for ax, ay, o in akt_xy): continue
+    for c in (c for i in (-1, 0, 1) for j in (-1, 0, 1) for c in siatka_w.get((int(x // BTS_PROMIEN) + i, int(y // BTS_PROMIEN) + j), ())):
+        if (c["x"] - x) ** 2 + (c["y"] - y) ** 2 >= BTS_PROMIEN ** 2: continue
+        ops = {o for o in c["operatorzy"] if o.startswith(s[2])}
+        if ops: c["operatorzy"] -= ops; zdjete += 1
+print(f"SI2PEM: zlikwidowanych {len(zlik)}, zdjetych z mapy {zdjete}")
+DOPISEK = (f"; bez stacji nieczynnych wg BTSearch (btsearch.pl), stan {BTS_STAN}" if BTS_STAN else "") + \
+          (f"; bez stacji zlikwidowanych wg SI2PEM (si2pem.gov.pl), stan {SI_STAN}" if SI_STAN else "")
 wsp = [c for c in wsp if any(c["operatorzy"])]
+out = [[round(c["x"]), round(c["y"]), c["h"], sorted(iop[o] for o in c["operatorzy"] if o), sorted(ipa[p] for p in c["pasma"]), c["adres"]] for c in wsp]
+zh = sum(c["h"] is not None for c in wsp)
+out.sort(key=lambda r: (r[1], r[0]))
 os.makedirs(os.path.join(MAPA, "dane", "kraj"), exist_ok=True)
 cel = os.path.join(MAPA, "dane", "kraj", "stacje.json.gz")
 with gzip.open(cel, "wt", encoding="utf-8", compresslevel=9) as f:
-    json.dump({"zrodlo": "UKE rejestr stacji bazowych, stan 2026-09-25 (bez wysokosci anten, azymutow i mocy)" + (f"; bez stacji nieczynnych wg BTSearch (btsearch.pl), stan {BTS_STAN}" if BTS_STAN else ""), "uklad": "EPSG:2180 minus E0 679860, N0 451200 (rynek Garwolina); azymut geograficzny = siatki + zbieznosc poludnikow w punkcie (liczy strona)",
+    json.dump({"zrodlo": "UKE rejestr stacji bazowych, stan 2026-09-25 (bez wysokosci anten, azymutow i mocy)" + DOPISEK, "uklad": "EPSG:2180 minus E0 679860, N0 451200 (rynek Garwolina); azymut geograficzny = siatki + zbieznosc poludnikow w punkcie (liczy strona)",
                "kolumny": ["x", "y", "h_ant", "operatorzy", "pasma", "adres"], "operatorzy": OP, "pasma": PA, "stacje": out},
               f, ensure_ascii=False, separators=(",", ":"))
 print(f"punktow rejestru: {len(st)}; stacji po sklejeniu < {SKLEJ} m: {len(out)}; z wysokoscia anteny (pas): {zh}; plik {os.path.getsize(cel) / 1e6:.2f} MB")
