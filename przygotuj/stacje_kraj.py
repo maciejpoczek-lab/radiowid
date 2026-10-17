@@ -46,9 +46,12 @@ for s in st.values():
     if h is not None: cel["h"] = h if cel["h"] is None else max(cel["h"], h)
 # stacje zgloszone jako rozebrane, a jeszcze w rejestrze (decyzja Macka 2026-10-17): operator zdjety z punktu, pusty punkt znika.
 # Pasma sa wspolne dla punktu, wiec gdy zostaje inny operator, pasma zostaja w calosci.
+# Kazde zdjecie (tu i przez BTSearch) blokuje tez dokladanie tego operatora w tym miejscu z SI2PEM (ponizej).
+zdjete_miejsca = []
 for r in json.load(open(os.path.join(HERE, "stacje-rozebrane.json")))["stacje"]:
+    zdjete_miejsca.append((r["x"], r["y"], r["operator"]))
     traf = [c for c in wsp if (c["x"] - r["x"]) ** 2 + (c["y"] - r["y"]) ** 2 < SKLEJ ** 2 and r["operator"] in c["operatorzy"]]
-    if not traf: print(f'rozebrana juz nie w rejestrze - usun wpis: {r["adres"]} ({r["operator"]})'); continue
+    if not traf: print(f'rozebranej nie ma w wykazie UKE (wpis blokuje juz tylko SI2PEM): {r["adres"]} ({r["operator"]})'); continue
     for c in traf: c["operatorzy"].discard(r["operator"])
     print(f'zdjeta jako rozebrana: {r["adres"]} ({r["operator"]})')
 # stacje nieczynne wg BTSearch (decyzja Macka 2026-10-17): zdejmujemy operatora z punktu do BTS_PROMIEN m. Stacja z notatka
@@ -62,7 +65,7 @@ for b in bts:
     for c in wsp:
         if (c["x"] - x) ** 2 + (c["y"] - y) ** 2 >= BTS_PROMIEN ** 2: continue
         ops = {o for o in c["operatorzy"] if o.startswith(b["operatorzy"])}
-        if ops: c["operatorzy"] -= ops; zdjete += 1
+        if ops: c["operatorzy"] -= ops; zdjete += 1; zdjete_miejsca += [(x, y, o) for o in ops]
 print(f"BTSearch: nieczynnych {len(bts)}, zdjetych z mapy {zdjete}")
 # stacje zlikwidowane wg SI2PEM (2026-10-18): jak wyzej, ale zostaje punkt, przy ktorym SI2PEM ma AKTYWNA stacje tego
 # samego operatora (przeniesienie anten, nowa instalacja w tym samym miejscu)
@@ -81,8 +84,32 @@ for s in zlik:
         ops = {o for o in c["operatorzy"] if o.startswith(s[2])}
         if ops: c["operatorzy"] -= ops; zdjete += 1
 print(f"SI2PEM: zlikwidowanych {len(zlik)}, zdjetych z mapy {zdjete}")
+# stacje czynne wg SI2PEM, ktorych wykaz UKE nie zna (decyzja Macka 2026-10-18): wykaz to same POZWOLENIA, a operator
+# z rezerwacja pasma moze stacje tylko zarejestrowac (glownie Plus i Play). Pomijamy stacje, gdy ten sam operator ma
+# punkt do DOD_PROMIEN m; inaczej dokladamy operatora i pasma do punktu do SKLEJ m (wspolny maszt) albo nowy punkt.
+DOD_PROMIEN = 100; dodane = nowe = zablokowane = 0
+blokady = {}
+for bx, by, bo in zdjete_miejsca: blokady.setdefault((int(bx // DOD_PROMIEN), int(by // DOD_PROMIEN)), []).append((bx, by, bo))
+def _obok(x, y, r):
+    k = int(r // BTS_PROMIEN) + 1
+    return (c for i in range(-k, k + 1) for j in range(-k, k + 1) for c in siatka_w.get((int(x // BTS_PROMIEN) + i, int(y // BTS_PROMIEN) + j), ())
+            if (c["x"] - x) ** 2 + (c["y"] - y) ** 2 < r ** 2)
+for s in akt:
+    if not s[5]: continue
+    x, y = _xy(s[0], s[1])
+    if any(s[2] in c["operatorzy"] for c in _obok(x, y, DOD_PROMIEN)): continue
+    if any(bo == s[2] and (bx - x) ** 2 + (by - y) ** 2 < DOD_PROMIEN ** 2 for i in (-1, 0, 1) for j in (-1, 0, 1)
+           for bx, by, bo in blokady.get((int(x // DOD_PROMIEN) + i, int(y // DOD_PROMIEN) + j), ())): zablokowane += 1; continue
+    cel = min(_obok(x, y, SKLEJ), key=lambda c: (c["x"] - x) ** 2 + (c["y"] - y) ** 2, default=None)
+    if cel is None:
+        cel = {"x": x, "y": y, "h": None, "operatorzy": set(), "pasma": set(), "adres": s[4], "n": 0}; wsp.append(cel); nowe += 1
+        siatka_w.setdefault((int(x // BTS_PROMIEN), int(y // BTS_PROMIEN)), []).append(cel)
+    cel["operatorzy"].add(s[2]); cel["pasma"] |= set(s[5]); dodane += 1
+print(f"SI2PEM: dolozonych stacji spoza wykazu UKE {dodane} (nowych punktow {nowe}); pominietych, bo zdjete wyzej: {zablokowane}")
+OP = sorted({o for c in wsp for o in c["operatorzy"] if o}); PA = sorted({p for c in wsp for p in c["pasma"]})
+iop, ipa = {o: k for k, o in enumerate(OP)}, {p: k for k, p in enumerate(PA)}
 DOPISEK = (f"; bez stacji nieczynnych wg BTSearch (btsearch.pl), stan {BTS_STAN}" if BTS_STAN else "") + \
-          (f"; bez stacji zlikwidowanych wg SI2PEM (si2pem.gov.pl), stan {SI_STAN}" if SI_STAN else "")
+          (f"; SI2PEM (si2pem.gov.pl), stan {SI_STAN}: bez stacji zlikwidowanych, z dolozonymi stacjami zarejestrowanymi bez pozwolenia" if SI_STAN else "")
 wsp = [c for c in wsp if any(c["operatorzy"])]
 out = [[round(c["x"]), round(c["y"]), c["h"], sorted(iop[o] for o in c["operatorzy"] if o), sorted(ipa[p] for p in c["pasma"]), c["adres"]] for c in wsp]
 zh = sum(c["h"] is not None for c in wsp)
