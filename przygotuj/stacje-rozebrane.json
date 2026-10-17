@@ -1,0 +1,7 @@
+{
+  "opis": "Stacje zgłoszone jako rozebrane, a jeszcze obecne w rejestrze UKE. stacje_kraj.py zdejmuje operatora z punktu w promieniu 60 m od x,y (układ strony: E - 679860, N - 451200). Gdy UKE wykreśli stację, skrypt to powie - wtedy wpis usunąć.",
+  "stacje": [
+    {"x": -159484, "y": -5069, "operator": "T-Mobile Polska S.A.", "adres": "Ustronie, Brzozowa 12, 900/6",
+     "zgloszenie": "2026-10-17, mail od użytkownika: rozebrana w sierpniu lub wrześniu 2026, potwierdza BTSearch"}
+  ]
+}

@@ -672,7 +672,7 @@ const wl = GRUPY.map(() => true);           // pasma włączone na mapie (tylko 
 GRUPY.forEach((g, gi) => {
   const l = document.createElement("label"); l.className = "pasmo";
   const c = document.createElement("input"); c.type = "checkbox"; c.checked = true;
-  c.onchange = () => { wl[gi] = c.checked; if (swiatlo) { rysujSwiatlo(); pokaz(); } };
+  c.onchange = () => { wl[gi] = c.checked; if (swiatlo) { rysujSwiatlo(); pokaz(); } if (wynik && !rodzaj.rtv) { tabele(); karta(); pokaz(); } };
   const i = document.createElement("i"); i.style.background = `rgb(${barwa(g.f).join(",")})`;
   const t = document.createElement("span"); t.className = "nazwaGrupy"; t.textContent = g.nazwa; l.append(c, i, t); l.title = `${g.mhz} MHz`; $("pasma").append(l);
 });
@@ -719,6 +719,8 @@ async function przelicz() {
   const bok = Math.max(mapa.width, mapa.height) * widok.mpp;
   if (!(bok > 0 && isFinite(bok))) return;                               // mapa bez rozmiaru (ukryta karta): policzy zdarzenie resize
   let pw = poziomWidoku(bok, PUNKTOW);
+// karta i tabela też tylko z włączonych pasm - inaczej po wyłączeniu 800 karta dalej pokazuje 800 (zgłoszenie z Wykopu 2026-10-16)
+const pasmoWl = (p) => { const gi = GRUPY.findIndex((g) => PASMA_MHZ[p] && g.gdy(PASMA_MHZ[p])); return gi < 0 || wl[gi]; };
   if (pw && pw.poziom.m < 100 && !wPasieWidoku(bok)) pw = { poziom: POZIOMY[2], k: 1, pozaPasem: true };   // poza pasem paczek nie ma budynków ani drzew: sam teren kraju
   document.documentElement.style.setProperty("--akcent", `rgb(${rodzaj.kol.join(",")})`);
   if (!pw) { $("podpis").textContent = PODPIS.kraj; swiatlo = null; podWidoku = null; $("stan").textContent = `bok widoku ${(bok / 1000).toFixed(0)} km · bez nakładki`; $("legenda").textContent = ""; pokaz(); return; }
@@ -947,7 +949,7 @@ const odl = (km) => (km < 1 ? `${Math.round(km * 100) * 10} m` : `${km.toFixed(0
 function lista() {                        // stacje z pasmami wybranego rodzaju i sieci, od największego zapasu sygnału (odległość + pasmo + przeszkody)
   if (!wynik || rodzaj.rtv) return [];
   return wynik.stacje.map((s) => {
-    const pasma = pasmaSieci(s).filter(rodzaj.p), wy = pasma.map((b) => s.pasma_wynik[b]).filter(Boolean);
+    const pasma = pasmaSieci(s).filter((p) => rodzaj.p(p) && pasmoWl(p)), wy = pasma.map((b) => s.pasma_wynik[b]).filter(Boolean);
     if (!wy.length) return null;
     const nad = wy.map((w) => w.nadwyzka_db), naj = wy.reduce((a, w) => (w.zapas_db > a.zapas_db ? w : a));
     return { ...s, pasma, nadwyzka_min_db: Math.min(...nad), nadwyzka_max_db: Math.max(...nad), droga: ocena(Math.min(...nad)),

@@ -47,6 +47,14 @@ for s in st.values():
 out = [[round(c["x"]), round(c["y"]), c["h"], sorted(iop[o] for o in c["operatorzy"] if o), sorted(ipa[p] for p in c["pasma"]), c["adres"]] for c in wsp]
 zh = sum(c["h"] is not None for c in wsp)
 out.sort(key=lambda r: (r[1], r[0]))
+# stacje zgloszone jako rozebrane, a jeszcze w rejestrze (decyzja Macka 2026-10-17): operator zdjety z punktu, pusty punkt znika.
+# Pasma sa wspolne dla punktu, wiec gdy zostaje inny operator, pasma zostaja w calosci.
+for r in json.load(open(os.path.join(HERE, "stacje-rozebrane.json")))["stacje"]:
+    traf = [c for c in wsp if (c["x"] - r["x"]) ** 2 + (c["y"] - r["y"]) ** 2 < SKLEJ ** 2 and r["operator"] in c["operatorzy"]]
+    if not traf: print(f'rozebrana juz nie w rejestrze - usun wpis: {r["adres"]} ({r["operator"]})'); continue
+    for c in traf: c["operatorzy"].discard(r["operator"])
+    print(f'zdjeta jako rozebrana: {r["adres"]} ({r["operator"]})')
+wsp = [c for c in wsp if any(c["operatorzy"])]
 os.makedirs(os.path.join(MAPA, "dane", "kraj"), exist_ok=True)
 cel = os.path.join(MAPA, "dane", "kraj", "stacje.json.gz")
 with gzip.open(cel, "wt", encoding="utf-8", compresslevel=9) as f:
